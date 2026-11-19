@@ -104,6 +104,13 @@ Three distinct surfaces:
 - `ai_http_request` / `ai_http_stream` - AI HTTP proxy with SSRF guard
 - `lm_ping` - local-model ping
 
+### System dashboard and process control (`src-tauri/src/modules/dashboard.rs`, `process_control.rs`)
+
+- `dashboard_snapshot` - CPU/memory/disk/process snapshot (best-effort; missing values are omitted, never fabricated)
+- `control_process` - suspend/resume, graceful `terminate` (SIGTERM / WM_CLOSE), or destructive `kill`, with ancestor/critical-process protection and PID-reuse checks
+- `suspended_processes` - persisted suspended-process store (drained on app exit)
+- `efficiency_mode_set` - Tarex-only process priority + sampling slowdown
+
 ### Secrets (`src-tauri/src/modules/secrets.rs`)
 
 - `secrets_get` / `secrets_set` / `secrets_delete` / `secrets_get_all` - OS keychain access, service `tarex-ai`

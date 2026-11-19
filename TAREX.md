@@ -114,7 +114,7 @@ Compatibility shims are allowed only where needed for existing agent hooks or CL
 - Terminate = graceful request (`SIGTERM` / Windows close), force kill = explicit destructive action.
 - Protect PID <= 1, self, ancestors, critical system processes, and PID-reuse mismatches.
 - Resume suspended processes on app exit.
-- Efficiency Mode lowers Tarex's own priority and reduces its own background work. Do not claim system-wide throttling.
+- Efficiency Mode lowers Tarex's own priority and reduces its own background work. Do not claim system-wide throttling. The native priority set is best-effort: macOS cannot raise nice back without privileges, so normal priority returns on the next start; the Settings toggle surfaces any OS refusal instead of hiding it.
 - Hardware info is best-effort and must show “Unavailable” rather than invented values.
 
 ## VPN
@@ -329,7 +329,7 @@ Each module is self-contained, exports a thin barrel via `index.ts`, and owns it
 - **header/** - top bar + inline search (`SearchInline` adapts to terminal vs editor via `SearchTarget`). `WindowControls` rendered when `USE_CUSTOM_WINDOW_CONTROLS` is true (Linux + Windows; macOS uses native traffic lights).
 - **statusbar/** - bottom bar, `CwdBreadcrumb` (handles Unix paths, Windows drive letters, and home `~` segments via `pathUtils.segmentsFromCwd`), AI tools indicator.
 - **desktop/** - system telemetry, virtualized three-column Files view, a project files/Git changes rail, and an on-demand Activity toolbelt. Project listings are bounded and use filesystem notifications; the Changes view reuses the existing source-control snapshot and refreshes only while visible. The toolbelt lists live sessions and app-managed background jobs. Compact layouts preserve mounted sessions. Connections, its native collector/dependencies, and public-IP lookups have been removed.
-- **shortcuts/** - keymap registry (`shortcuts.ts`) + `useGlobalShortcuts`. Handlers live in `App.tsx` and are passed in by id (`tab.new`, `ai.toggle`, …). `metaKey || ctrlKey` for cross-platform Cmd/Ctrl.
+- **shortcuts/** - keymap registry (`shortcuts.ts`) + `useGlobalShortcuts`. Handlers live in `App.tsx` and are passed in by id (`tab.new`, `ai.toggle`, …). `metaKey || ctrlKey` for cross-platform Cmd/Ctrl. Plain Ctrl+letter bindings in the curated set (`C,V,Z,A,D,E,F,K,L,N,P,R,U,W,Y`) defer to a focused terminal so readline keys reach the shell; Ctrl+Shift/Cmd chords and the keymap outside terminals are unchanged, and Ctrl+B keeps its existing runtime behavior.
 - **settings/** - settings store (`store.ts` via `tauri-plugin-store`), preferences hook, settings window opener.
 - **sidebar/** - activity bar + collapsible side panels (explorer, source control, git history).
 - **source-control/** - git status / stage / commit panel and diff workflow.

@@ -57,7 +57,9 @@ need one manual installation of Tarex UI 0.1.0 or later.
 - **WORKSPACE:** GPU-rendered Ghostty terminals, persistent tabs, split panes,
   code editing, source control, and web previews.
 - **AI:** chat, project context, attachments, voice, and approval-gated
-  tools. Chat and autocomplete pickers show configured custom-endpoint models.
+  tools. The panel opens even without a configured provider key; chat and
+  autocomplete pickers show built-in models alongside configured
+  custom-endpoint models.
 - **Files context menu:** opens a terminal in the chosen directory, creates or
   deletes entries, copies paths, and attaches files to the agent.
 - **CONFIG:** endpoint settings, themes, editor preferences, shortcuts, and agents.
@@ -77,8 +79,19 @@ are hidden. Terminal input and output retain their independent responsive path.
 Right-click opens app actions, while editable fields keep their standard editing
 menus. The interface still uses Tauri's system WebView.
 
+Optional **Efficiency Mode** (CONFIG → General) lowers Tarex's own process
+priority and slows Tarex's own sampling while it is on. It affects Tarex only —
+other apps and the system are never throttled, and normal priority returns on
+the next Tarex start when the OS blocks raising it again.
+
+VPN functionality is deferred. Tarex UI provides no VPN controls and reports
+no VPN status.
+
 Type shell commands directly in the terminal. The separate composer is for the AI
-agent and opens when requested. Terminal completion displays one ghost suggestion
+agent and opens when requested. While a terminal is focused, plain Ctrl
+shortcuts (Ctrl+C, Ctrl+R, Ctrl+V, and other readline keys) pass through to the
+shell; app shortcuts keep Ctrl+Shift/Cmd. Terminal completion displays one ghost
+suggestion
 at the shell cursor. Right Arrow accepts it, Escape dismisses it, and Tab keeps
 the shell's own completion. The editor retains its own multiline AI completion
 and Emmet HTML/CSS expansion.
@@ -170,8 +183,10 @@ are not required for these updater signatures.
 
 ## Credits And License
 
-Tarex UI is derived from [Tarex](https://github.com/Kishir298/tarex-ui) by Crynta and
-retains its native terminal, editor, and AI foundations. Original copyright and
-third-party license notices are preserved. Licensed under [Apache-2.0](LICENSE).
+Tarex UI is derived from [Terex UI](https://github.com/3xecutablefile/terex-ui),
+which is itself derived from [Terax](https://github.com/crynta/terax-ai) by
+Crynta, and retains its native terminal, editor, and AI foundations. Original
+copyright and third-party license notices are preserved. Licensed under
+[Apache-2.0](LICENSE).
 
 [Architecture documentation](docs/README.md) describes the inherited subsystems.

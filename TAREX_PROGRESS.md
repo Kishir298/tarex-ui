@@ -100,7 +100,15 @@ deferred by decision; no security gates were weakened in this work.
 
 ## Phase 7 — Final verification and delivery
 
-- [ ] Full checks (final run pending at time of writing)
+- [x] Full checks (2026-11-19, macOS): `pnpm check-types` pass;
+      `pnpm lint` exit 0 (88 pre-existing warnings, 1 info, zero added);
+      `pnpm test` 1370/1370 (one pre-existing flaky Svelte test, see known
+      issues); `cargo test --locked` 403 pass / 0 fail / 1 ignored;
+      `cargo clippy --all-targets -- -D warnings` pass;
+      `cargo fmt --check` fails only on pre-existing hunks; `pnpm build`
+      pass; `node --test scripts/release.check.mjs` 3/3 pass;
+      `pnpm tauri build --debug --bundles app` produced
+      `src-tauri/target/debug/bundle/macos/Tarex UI.app`
 - [ ] Smoke tests
 - [x] `requirements.txt` / `.gitignore` review — no new packages were
       installed (pnpm only, so no `requirements.txt` is needed); `.gitignore`
@@ -124,5 +132,8 @@ deferred by decision; no security gates were weakened in this work.
   `TAREX_SECURITY_AUDIT.md`.
 - Releases cannot publish until the Tarex signing keypair exists as a
   repository secret.
+- `src/modules/editor/lib/languageResolver.test.ts` ("loads Svelte files…")
+  is flaky under parallel vitest load (Svelte language mode not ready);
+  passes standalone. Pre-existing; unrelated to this work.
 - One transient WASM vitest setup flake was observed under heavy parallel
   load and passes standalone; unrelated to these changes.

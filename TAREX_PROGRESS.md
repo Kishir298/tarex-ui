@@ -115,7 +115,7 @@ deferred by decision; no security gates were weakened in this work.
       now also covers `.env*`, `secrets.json`, `credentials.json`,
       `*.pem`/`*.key`/`*.p12`/`*.pfx`, and `.npmrc`
 - [x] Staged commits (one logical topic per commit)
-- [ ] Push branch and fast-forward `main`
+- [x] Push branch and fast-forward `main` (branch `tarex-ui/restructure-2026-11` pushed; `main` fast-forwarded to `be71ee0` and pushed)
 - [ ] Open PR (only if requested)
 
 ## Known issues / follow-ups

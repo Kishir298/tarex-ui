@@ -9,15 +9,15 @@ let
 
   srcMap = {
     x86_64-linux = fetchurl {
-      url = "https://github.com/Kishir298/Tarex-Ui/releases/download/v${version}/Tarex_${version}_amd64.deb";
+      url = "https://github.com/Kishir298/tarex-ui/releases/download/v${version}/Tarex_${version}_amd64.deb";
       hash = sources.hashes.x86_64-linux;
     };
     x86_64-darwin = fetchurl {
-      url = "https://github.com/Kishir298/Tarex-Ui/releases/download/v${version}/Tarex_x64.app.tar.gz";
+      url = "https://github.com/Kishir298/tarex-ui/releases/download/v${version}/Tarex_x64.app.tar.gz";
       hash = sources.hashes.x86_64-darwin;
     };
     aarch64-darwin = fetchurl {
-      url = "https://github.com/Kishir298/Tarex-Ui/releases/download/v${version}/Tarex_aarch64.app.tar.gz";
+      url = "https://github.com/Kishir298/tarex-ui/releases/download/v${version}/Tarex_aarch64.app.tar.gz";
       hash = sources.hashes.aarch64-darwin;
     };
   };
@@ -69,7 +69,7 @@ stdenv.mkDerivation {
 
   meta = with lib; {
     description = "Open-source lightweight cross-platform AI-native terminal (ADE)";
-    homepage = "https://github.com/Kishir298/Tarex-Ui";
+    homepage = "https://github.com/Kishir298/tarex-ui";
     license = licenses.asl20;
     platforms = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
   };

@@ -2,7 +2,7 @@
 
 Tarex direction, what's shipped, what's coming, and what's deliberately out of scope.
 
-This file is updated as direction evolves. For day-to-day work, see [GitHub Issues](https://github.com/Kishir298/Tarex-Ui/issues) and the Projects board.
+This file is updated as direction evolves. For day-to-day work, see [GitHub Issues](https://github.com/Kishir298/tarex-ui/issues) and the Projects board.
 
 ## What Tarex is
 

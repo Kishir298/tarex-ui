@@ -2,11 +2,11 @@
   <img src="../../public/logo.png" width="144" height="144" alt="Tarex" />
   <h1>Tarex</h1>
   <p><strong>हल्का, टर्मिनल-केंद्रित और AI-नेटिव डेवलपमेंट वर्कस्पेस।</strong></p>
-  <p><a href="https://github.com/Kishir298/Tarex-Ui">वेबसाइट</a> · <a href="https://github.com/Kishir298/Tarex-Ui/docs">दस्तावेज़</a> · <a href="https://github.com/crynta/Tarex-website">वेबसाइट का सोर्स कोड</a></p>
+  <p><a href="https://github.com/Kishir298/tarex-ui">वेबसाइट</a> · <a href="https://github.com/Kishir298/tarex-ui/docs">दस्तावेज़</a> · <a href="https://github.com/crynta/Tarex-website">वेबसाइट का सोर्स कोड</a></p>
 
   <p>
-    <img src="https://img.shields.io/github/v/release/Kishir298/Tarex-Ui?label=version&color=blue" alt="संस्करण" />
-    <img src="https://img.shields.io/github/downloads/Kishir298/Tarex-Ui/total?label=downloads&color=blue" alt="डाउनलोड" />
+    <img src="https://img.shields.io/github/v/release/Kishir298/tarex-ui?label=version&color=blue" alt="संस्करण" />
+    <img src="https://img.shields.io/github/downloads/Kishir298/tarex-ui/total?label=downloads&color=blue" alt="डाउनलोड" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="प्लेटफ़ॉर्म" />
     <a href="https://discord.gg/tyveTUyEp7"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
     <a href="https://www.youtube.com/@crynta"><img src="https://img.shields.io/badge/Youtube-FF0000?logo=youtube&logoColor=white" alt="YouTube" /></a>
@@ -90,7 +90,7 @@ Tarex एक हल्का, ओपन-सोर्स, टर्मिनल-�
 
 ## इंस्टॉल करें
 
-नवीनतम इंस्टॉलर [Releases](https://github.com/Kishir298/Tarex-Ui/releases/latest) पेज पर हैं। Tarex वहीं से अपने आप अपडेट होता है।
+नवीनतम इंस्टॉलर [Releases](https://github.com/Kishir298/tarex-ui/releases/latest) पेज पर हैं। Tarex वहीं से अपने आप अपडेट होता है।
 
 ### Windows नोट्स
 
@@ -100,7 +100,7 @@ Tarex एक हल्का, ओपन-सोर्स, टर्मिनल-�
 ### Linux नोट्स
 
 - **Arch / AUR:** `yay -S tarex-bin` या `paru`। यह नवीनतम रिलीज़ का अनुसरण करता है।
-- **NixOS / Nix:** आधिकारिक flake का उपयोग करें। NixOS के बाहर `nix profile install github:Kishir298/Tarex-Ui` चलाएँ। NixOS में flake आयात करें और `inputs.tarex.packages.${pkgs.system}.tarex` को `environment.systemPackages` में जोड़ें। आसान सेटअप के लिए `nixosModules.tarex` भी उपलब्ध है।
+- **NixOS / Nix:** आधिकारिक flake का उपयोग करें। NixOS के बाहर `nix profile install github:Kishir298/tarex-ui` चलाएँ। NixOS में flake आयात करें और `inputs.tarex.packages.${pkgs.system}.tarex` को `environment.systemPackages` में जोड़ें। आसान सेटअप के लिए `nixosModules.tarex` भी उपलब्ध है।
 - **AppImage:** FUSE आवश्यक है। इसके बिना `./Tarex_*.AppImage --appimage-extract-and-run` चलाएँ। Wayland पर रेंडरिंग समस्या हो तो `WEBKIT_DISABLE_DMABUF_RENDERER=1` आज़माएँ। `.deb` / `.rpm` पैकेज सिस्टम GTK स्टैक से जुड़ते हैं और आम तौर पर अधिक सुचारु चलते हैं।
 
 ## AI कॉन्फ़िगर करें

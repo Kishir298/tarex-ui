@@ -11,7 +11,7 @@ Tarex UI is an independent desktop terminal, editor, filesystem browser, and AI-
 - Bundle identifier: `io.github.kishir298.tarex-ui`
 - CLI: `tarex`
 - Internal prefix: `tarex` / `TAREX_`
-- Repository: `https://github.com/Kishir298/Tarex-Ui`
+- Repository: `https://github.com/Kishir298/tarex-ui`
 - License: Apache-2.0; preserve upstream Crynta/Terex and Ghostty attribution.
 
 ## Non-negotiable rules
@@ -123,7 +123,7 @@ VPN functionality is deferred. Tarex does not provide VPN controls or fake statu
 
 ## Release
 
-- Updater endpoint: `https://github.com/Kishir298/Tarex-Ui/releases/latest/download/latest.json`.
+- Updater endpoint: `https://github.com/Kishir298/tarex-ui/releases/latest/download/latest.json`.
 - A fresh Tarex signing keypair is required. The public key lives in `tauri.conf.json`; the private key is a repository secret.
 - Release artifacts use `Tarex-UI-` names and `TAREX_*` environment variables.
 - Push to the `tarex` remote; keep `origin` as upstream.

@@ -2,11 +2,11 @@
   <img src="../../public/logo.png" width="144" height="144" alt="Tarex" />
   <h1>Tarex</h1>
   <p><strong>Ruang kerja pengembangan ringan, berfokus pada terminal, dan berteknologi AI.</strong></p>
-  <p><a href="https://github.com/Kishir298/Tarex-Ui">Situs web</a> · <a href="https://github.com/Kishir298/Tarex-Ui/docs">Dokumentasi</a> · <a href="https://github.com/crynta/Tarex-website">Kode sumber situs web</a></p>
+  <p><a href="https://github.com/Kishir298/tarex-ui">Situs web</a> · <a href="https://github.com/Kishir298/tarex-ui/docs">Dokumentasi</a> · <a href="https://github.com/crynta/Tarex-website">Kode sumber situs web</a></p>
 
   <p>
-    <img src="https://img.shields.io/github/v/release/Kishir298/Tarex-Ui?label=version&color=blue" alt="versi" />
-    <img src="https://img.shields.io/github/downloads/Kishir298/Tarex-Ui/total?label=downloads&color=blue" alt="unduhan" />
+    <img src="https://img.shields.io/github/v/release/Kishir298/tarex-ui?label=version&color=blue" alt="versi" />
+    <img src="https://img.shields.io/github/downloads/Kishir298/tarex-ui/total?label=downloads&color=blue" alt="unduhan" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="platform" />
     <a href="https://discord.gg/tyveTUyEp7"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
     <a href="https://www.youtube.com/@crynta"><img src="https://img.shields.io/badge/Youtube-FF0000?logo=youtube&logoColor=white" alt="YouTube" /></a>
@@ -90,7 +90,7 @@ Tarex adalah lingkungan pengembangan (ADE) ringan, sumber terbuka, berfokus pada
 
 ## Instalasi
 
-Penginstal terbaru tersedia di halaman [Releases](https://github.com/Kishir298/Tarex-Ui/releases/latest). Tarex melakukan pembaruan otomatis dari sana.
+Penginstal terbaru tersedia di halaman [Releases](https://github.com/Kishir298/tarex-ui/releases/latest). Tarex melakukan pembaruan otomatis dari sana.
 
 ### Catatan Windows
 
@@ -100,7 +100,7 @@ Penginstal terbaru tersedia di halaman [Releases](https://github.com/Kishir298/T
 ### Catatan Linux
 
 - **Arch / AUR:** `yay -S tarex-bin` atau `paru`. Paket mengikuti rilis terbaru.
-- **NixOS / Nix:** gunakan flake resmi. Di luar NixOS, jalankan `nix profile install github:Kishir298/Tarex-Ui`. Di NixOS, impor flake dan tambahkan `inputs.tarex.packages.${pkgs.system}.tarex` ke `environment.systemPackages`. `nixosModules.tarex` juga tersedia untuk pengaturan yang lebih sederhana.
+- **NixOS / Nix:** gunakan flake resmi. Di luar NixOS, jalankan `nix profile install github:Kishir298/tarex-ui`. Di NixOS, impor flake dan tambahkan `inputs.tarex.packages.${pkgs.system}.tarex` ke `environment.systemPackages`. `nixosModules.tarex` juga tersedia untuk pengaturan yang lebih sederhana.
 - **AppImage:** memerlukan FUSE. Tanpanya, jalankan `./Tarex_*.AppImage --appimage-extract-and-run`. Jika ada masalah perenderan di Wayland, coba `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Paket `.deb` / `.rpm` menggunakan stack GTK sistem dan biasanya lebih lancar.
 
 ## Konfigurasi AI

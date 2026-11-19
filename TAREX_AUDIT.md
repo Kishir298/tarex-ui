@@ -73,7 +73,7 @@ See `TAREX_SECURITY_AUDIT.md` for severity and remediation details. Key findings
 - Internal crate/env/event prefix: `tarex`/`TAREX_`
 - CLI: `tarex`
 - Initial version: `0.1.0`
-- Repository: `https://github.com/Kishir298/Tarex-Ui`
+- Repository: `https://github.com/Kishir298/tarex-ui`
 - Remote policy: add `tarex` remote; keep `origin` as upstream.
 - Updater: new Tarex signing keypair; public key committed, private key stored as a repository secret.
 - Import: automatic non-secret Terex/Terax data import on first launch; explicit prompt before importing API keys.

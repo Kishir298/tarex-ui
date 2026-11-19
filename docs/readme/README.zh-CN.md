@@ -5,16 +5,16 @@
   <p><strong>轻量、终端优先的 AI 原生开发工作区。</strong></p>
 
   <p>
-    <a href="https://github.com/Kishir298/Tarex-Ui">网站</a>
+    <a href="https://github.com/Kishir298/tarex-ui">网站</a>
     ·
-    <a href="https://github.com/Kishir298/Tarex-Ui/docs">文档</a>
+    <a href="https://github.com/Kishir298/tarex-ui/docs">文档</a>
     ·
     <a href="https://github.com/crynta/Tarex-website">网站源代码</a>
   </p>
 
   <p>
-    <img src="https://img.shields.io/github/v/release/Kishir298/Tarex-Ui?label=version&color=blue" alt="版本" />
-    <img src="https://img.shields.io/github/downloads/Kishir298/Tarex-Ui/total?label=downloads&color=blue" alt="下载量" />
+    <img src="https://img.shields.io/github/v/release/Kishir298/tarex-ui?label=version&color=blue" alt="版本" />
+    <img src="https://img.shields.io/github/downloads/Kishir298/tarex-ui/total?label=downloads&color=blue" alt="下载量" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="平台" />
     <a href="https://discord.gg/tyveTUyEp7"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
     <a href="https://www.youtube.com/@crynta"><img src="https://img.shields.io/badge/Youtube-FF0000?logo=youtube&logoColor=white" alt="YouTube" /></a>
@@ -116,7 +116,7 @@ Tarex 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE）�
 
 ## 安装
 
-最新安装程序位于 [Releases](https://github.com/Kishir298/Tarex-Ui/releases/latest) 页面。Tarex 会从该页面自动更新。
+最新安装程序位于 [Releases](https://github.com/Kishir298/tarex-ui/releases/latest) 页面。Tarex 会从该页面自动更新。
 
 ### Windows 说明
 
@@ -126,7 +126,7 @@ Tarex 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE）�
 ### Linux 说明
 
 - **Arch / AUR：** `yay -S tarex-bin`（也可使用 `paru` 等）。它会跟随最新版本。
-- **NixOS / Nix：** 使用官方 flake。非 NixOS 运行 `nix profile install github:Kishir298/Tarex-Ui`；NixOS 可导入 flake，并将 `inputs.tarex.packages.${pkgs.system}.tarex` 添加到 `environment.systemPackages`。也可以使用 `nixosModules.tarex` 输出进行更简单的配置。
+- **NixOS / Nix：** 使用官方 flake。非 NixOS 运行 `nix profile install github:Kishir298/tarex-ui`；NixOS 可导入 flake，并将 `inputs.tarex.packages.${pkgs.system}.tarex` 添加到 `environment.systemPackages`。也可以使用 `nixosModules.tarex` 输出进行更简单的配置。
 - **AppImage：** 需要 FUSE。没有 FUSE 时运行 `./Tarex_*.AppImage --appimage-extract-and-run`。如果在 Wayland 上出现渲染问题，请尝试 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。否则，`.deb` / `.rpm` 包会链接系统 GTK 栈，通常更流畅。
 
 ## 配置 AI

@@ -3,14 +3,14 @@
   <h1>Tarex UI</h1>
   <p><strong>A native AI terminal and system console.</strong></p>
   <p>
-    <a href="https://github.com/Kishir298/Tarex-Ui/releases/latest">Downloads</a>
-    · <a href="https://github.com/Kishir298/Tarex-Ui/issues">Issues</a>
-    · <a href="https://github.com/Kishir298/Tarex-Ui/actions/workflows/release.yml">Release builds</a>
+    <a href="https://github.com/Kishir298/tarex-ui/releases/latest">Downloads</a>
+    · <a href="https://github.com/Kishir298/tarex-ui/issues">Issues</a>
+    · <a href="https://github.com/Kishir298/tarex-ui/actions/workflows/release.yml">Release builds</a>
   </p>
   <p>
-    <img src="https://github.com/Kishir298/Tarex-Ui/actions/workflows/release.yml/badge.svg?branch=main" alt="Release builds" />
+    <img src="https://github.com/Kishir298/tarex-ui/actions/workflows/release.yml/badge.svg?branch=main" alt="Release builds" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-9856df" alt="Supported platforms" />
-    <img src="https://img.shields.io/github/license/Kishir298/Tarex-Ui" alt="License" />
+    <img src="https://img.shields.io/github/license/Kishir298/tarex-ui" alt="License" />
   </p>
 </div>
 
@@ -21,7 +21,7 @@ deep charcoal, signal teal, and warm amber; the dashboard and terminal follow th
 
 ## Download
 
-Installers are published to [Releases](https://github.com/Kishir298/Tarex-Ui/releases)
+Installers are published to [Releases](https://github.com/Kishir298/tarex-ui/releases)
 after successful pushes to `main`:
 
 | Platform | Downloads |
@@ -170,7 +170,7 @@ are not required for these updater signatures.
 
 ## Credits And License
 
-Tarex UI is derived from [Tarex](https://github.com/Kishir298/Tarex-Ui) by Crynta and
+Tarex UI is derived from [Tarex](https://github.com/Kishir298/tarex-ui) by Crynta and
 retains its native terminal, editor, and AI foundations. Original copyright and
 third-party license notices are preserved. Licensed under [Apache-2.0](LICENSE).
 

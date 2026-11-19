@@ -175,7 +175,7 @@ mod updater_config_tests {
         assert!(updater.require_signed_version);
         assert!(!updater.pubkey.is_empty());
         assert_eq!(updater.endpoints.len(), 1);
-        assert_eq!(updater.endpoints[0].as_str(), "https://github.com/Kishir298/Tarex-Ui/releases/latest/download/latest.json");
+        assert_eq!(updater.endpoints[0].as_str(), "https://github.com/Kishir298/tarex-ui/releases/latest/download/latest.json");
     }
 }
 

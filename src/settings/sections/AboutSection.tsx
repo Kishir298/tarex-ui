@@ -8,8 +8,8 @@ import { arch, platform } from "@tauri-apps/plugin-os";
 import { useEffect, useState } from "react";
 import { SectionHeader } from "../components/SectionHeader";
 
-const REPO_URL = "https://github.com/Kishir298/Tarex-Ui";
-const WEBSITE = "https://github.com/Kishir298/Tarex-Ui#readme";
+const REPO_URL = "https://github.com/Kishir298/tarex-ui";
+const WEBSITE = "https://github.com/Kishir298/tarex-ui#readme";
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
@@ -89,7 +89,7 @@ export function AboutSection() {
             className="inline-flex items-center gap-1.5 rounded-md text-[12px] underline-offset-2 hover:text-foreground hover:underline"
           >
             <HugeiconsIcon icon={GithubIcon} size={12} strokeWidth={1.75} />
-            Kishir298/Tarex-Ui
+            Kishir298/tarex-ui
           </button>
         </dd>
         <dt className="text-muted-foreground">Website</dt>

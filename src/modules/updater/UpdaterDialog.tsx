@@ -101,7 +101,7 @@ export function UpdaterDialog({
             <Button
               onClick={() =>
                 void openUrl(
-                  "https://github.com/Kishir298/Tarex-Ui/releases/latest",
+                  "https://github.com/Kishir298/tarex-ui/releases/latest",
                 )
               }
             >

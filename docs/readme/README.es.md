@@ -5,14 +5,14 @@
   <p><strong>Espacio de desarrollo ligero, centrado en la terminal y nativo de IA.</strong></p>
 
   <p>
-    <a href="https://github.com/Kishir298/Tarex-Ui">Sitio web</a> ·
-    <a href="https://github.com/Kishir298/Tarex-Ui/docs">Documentación</a> ·
+    <a href="https://github.com/Kishir298/tarex-ui">Sitio web</a> ·
+    <a href="https://github.com/Kishir298/tarex-ui/docs">Documentación</a> ·
     <a href="https://github.com/crynta/Tarex-website">Código fuente del sitio web</a>
   </p>
 
   <p>
-    <img src="https://img.shields.io/github/v/release/Kishir298/Tarex-Ui?label=version&color=blue" alt="versión" />
-    <img src="https://img.shields.io/github/downloads/Kishir298/Tarex-Ui/total?label=downloads&color=blue" alt="descargas" />
+    <img src="https://img.shields.io/github/v/release/Kishir298/tarex-ui?label=version&color=blue" alt="versión" />
+    <img src="https://img.shields.io/github/downloads/Kishir298/tarex-ui/total?label=downloads&color=blue" alt="descargas" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="plataforma" />
     <a href="https://discord.gg/tyveTUyEp7"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
     <a href="https://www.youtube.com/@crynta"><img src="https://img.shields.io/badge/Youtube-FF0000?logo=youtube&logoColor=white" alt="YouTube" /></a>
@@ -114,7 +114,7 @@ Tarex es un entorno de desarrollo (ADE) ligero, de código abierto, centrado en 
 
 ## Instalación
 
-Los instaladores más recientes están en la página de [Releases](https://github.com/Kishir298/Tarex-Ui/releases/latest). Tarex se actualiza automáticamente desde allí.
+Los instaladores más recientes están en la página de [Releases](https://github.com/Kishir298/tarex-ui/releases/latest). Tarex se actualiza automáticamente desde allí.
 
 ### Notas para Windows
 
@@ -124,7 +124,7 @@ Los instaladores más recientes están en la página de [Releases](https://githu
 ### Notas para Linux
 
 - **Arch / AUR:** `yay -S tarex-bin` (o `paru`, etc.). Sigue la versión más reciente.
-- **NixOS / Nix:** usa el flake oficial: `nix profile install github:Kishir298/Tarex-Ui` en sistemas que no sean NixOS, o importa el flake y añade `inputs.tarex.packages.${pkgs.system}.tarex` a `environment.systemPackages` en NixOS. También está disponible `nixosModules.tarex` para una configuración más sencilla.
+- **NixOS / Nix:** usa el flake oficial: `nix profile install github:Kishir298/tarex-ui` en sistemas que no sean NixOS, o importa el flake y añade `inputs.tarex.packages.${pkgs.system}.tarex` a `environment.systemPackages` en NixOS. También está disponible `nixosModules.tarex` para una configuración más sencilla.
 - **AppImage:** requiere FUSE. Sin FUSE: `./Tarex_*.AppImage --appimage-extract-and-run`. Si hay problemas de renderizado en Wayland, prueba `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Los paquetes `.deb` / `.rpm` enlazan con la pila GTK del sistema y suelen funcionar con mayor fluidez.
 
 ## Configurar la IA

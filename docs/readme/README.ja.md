@@ -2,11 +2,11 @@
   <img src="../../public/logo.png" width="144" height="144" alt="Tarex" />
   <h1>Tarex</h1>
   <p><strong>軽量でターミナル中心の AI ネイティブ開発ワークスペース。</strong></p>
-  <p><a href="https://github.com/Kishir298/Tarex-Ui">ウェブサイト</a> · <a href="https://github.com/Kishir298/Tarex-Ui/docs">ドキュメント</a> · <a href="https://github.com/crynta/Tarex-website">ウェブサイトのソースコード</a></p>
+  <p><a href="https://github.com/Kishir298/tarex-ui">ウェブサイト</a> · <a href="https://github.com/Kishir298/tarex-ui/docs">ドキュメント</a> · <a href="https://github.com/crynta/Tarex-website">ウェブサイトのソースコード</a></p>
 
   <p>
-    <img src="https://img.shields.io/github/v/release/Kishir298/Tarex-Ui?label=version&color=blue" alt="バージョン" />
-    <img src="https://img.shields.io/github/downloads/Kishir298/Tarex-Ui/total?label=downloads&color=blue" alt="ダウンロード" />
+    <img src="https://img.shields.io/github/v/release/Kishir298/tarex-ui?label=version&color=blue" alt="バージョン" />
+    <img src="https://img.shields.io/github/downloads/Kishir298/tarex-ui/total?label=downloads&color=blue" alt="ダウンロード" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="プラットフォーム" />
     <a href="https://discord.gg/tyveTUyEp7"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
     <a href="https://www.youtube.com/@crynta"><img src="https://img.shields.io/badge/Youtube-FF0000?logo=youtube&logoColor=white" alt="YouTube" /></a>
@@ -90,7 +90,7 @@ Tarex は、Tauri 2 + Rust と React 19 で構築された、軽量かつオー�
 
 ## インストール
 
-最新のインストーラーは [Releases](https://github.com/Kishir298/Tarex-Ui/releases/latest) ページにあります。Tarex はそこから自動更新されます。
+最新のインストーラーは [Releases](https://github.com/Kishir298/tarex-ui/releases/latest) ページにあります。Tarex はそこから自動更新されます。
 
 ### Windows の注意事項
 
@@ -100,7 +100,7 @@ Tarex は、Tauri 2 + Rust と React 19 で構築された、軽量かつオー�
 ### Linux の注意事項
 
 - **Arch / AUR:** `yay -S tarex-bin`（または `paru` など）。最新版を追跡します。
-- **NixOS / Nix:** 公式 flake を使用します。NixOS 以外では `nix profile install github:Kishir298/Tarex-Ui`、NixOS では flake をインポートし、`inputs.tarex.packages.${pkgs.system}.tarex` を `environment.systemPackages` に追加します。より簡単な設定には `nixosModules.tarex` も利用できます。
+- **NixOS / Nix:** 公式 flake を使用します。NixOS 以外では `nix profile install github:Kishir298/tarex-ui`、NixOS では flake をインポートし、`inputs.tarex.packages.${pkgs.system}.tarex` を `environment.systemPackages` に追加します。より簡単な設定には `nixosModules.tarex` も利用できます。
 - **AppImage:** FUSE が必要です。ない場合は `./Tarex_*.AppImage --appimage-extract-and-run` を実行してください。Wayland で描画に問題がある場合は `WEBKIT_DISABLE_DMABUF_RENDERER=1` を試してください。`.deb` / `.rpm` はシステムの GTK スタックを使用するため、通常はより滑らかです。
 
 ## AI の設定

@@ -41,11 +41,26 @@ fn in_git_repo(dir: &Path) -> bool {
     }
 }
 
+// Development configuration files that stay visible even when the user has
+// hidden dot-prefixed entries. Files only: directories (`.git`, `.github`, …)
+// and sensitive names (`.env`, `.ssh`) are deliberately not allowlisted.
+pub fn is_dev_config_file(name: &str) -> bool {
+    matches!(
+        name,
+        ".gitignore" | ".gitattributes" | ".editorconfig" | ".dockerignore"
+    )
+}
+
 // Immediate children of `dir` that git does not ignore. Outside a repo every
 // name is returned, so nothing is dimmed.
-fn git_non_ignored_names(dir: &Path, show_hidden: bool) -> HashSet<String> {
+//
+// Hidden entries are always walked: this set only decorates entries that are
+// already being listed, and an allowlisted dotfile (`.gitignore`, …) must be
+// checked against git's rules even when `show_hidden` is off — otherwise it
+// would be missing from the set and falsely flagged `gitignored`.
+fn git_non_ignored_names(dir: &Path) -> HashSet<String> {
     WalkBuilder::new(dir)
-        .hidden(!show_hidden)
+        .hidden(false)
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
@@ -127,9 +142,10 @@ fn natural_cmp(a: &str, b: &str) -> Ordering {
 
 /// Lists immediate children of `path`. Dirs first, then files, each sorted
 /// with `natural_cmp` (numeric-aware, case-insensitive). Dot-prefixed entries
-/// (files and dirs) are hidden unless `show_hidden` is set. `git_decorations`
-/// opts into the per-entry `gitignored` flag; off by default so non-explorer
-/// callers pay nothing.
+/// (files and dirs) are hidden unless `show_hidden` is set, except recognised
+/// dev-config files (see [`is_dev_config_file`]) which are always listed.
+/// `git_decorations` opts into the per-entry `gitignored` flag; off by default
+/// so non-explorer callers pay nothing.
 #[tauri::command]
 pub async fn fs_read_dir(
     path: String,
@@ -161,7 +177,7 @@ pub fn read_dir_sync(
     // each child for a nested `.git`, which trips macOS folder-access prompts.
     let git_decorations = git_decorations.unwrap_or(false) && in_git_repo(&root);
     let git_visible = if git_decorations {
-        git_non_ignored_names(&root, show_hidden)
+        git_non_ignored_names(&root)
     } else {
         HashSet::new()
     };
@@ -189,7 +205,10 @@ pub fn read_dir_sync(
                 EntryKind::File
             };
 
-            if name.starts_with('.') && !show_hidden {
+            if name.starts_with('.')
+                && !show_hidden
+                && !(is_dev_config_file(&name) && !meta.is_dir())
+            {
                 return None;
             }
 

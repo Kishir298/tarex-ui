@@ -35,6 +35,28 @@ describe("fileIconUrl resolution chain", () => {
   });
 });
 
+// Recognised dev files and common source types must never fall back to the
+// generic file glyph (the explorer shows .gitignore etc. even with hidden
+// files off, so a default icon there would look like a bug).
+describe("dev-config and common source icons", () => {
+  it.each([
+    ".gitignore",
+    ".gitattributes",
+    ".editorconfig",
+    ".dockerignore",
+    "file.py",
+    "file.js",
+    "file.ts",
+    "file.rs",
+    "Dockerfile",
+    "Makefile",
+    "makefile",
+  ])("resolves %s to a non-default icon", (name) => {
+    expect(fileIconUrl(name)).toContain("data:image/svg");
+    expect(fileIconUrl(name)).not.toBe(DEFAULT);
+  });
+});
+
 describe("folderIconUrl", () => {
   it("returns an inline svg data url", () => {
     expect(folderIconUrl("src", false)).toContain("data:image/svg");

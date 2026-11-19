@@ -4,6 +4,7 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::Serialize;
 
 use super::to_canon;
+use super::tree::is_dev_config_file;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
 #[derive(Serialize, Clone)]
@@ -72,23 +73,38 @@ pub fn fs_search(
     let mut truncated = false;
 
     let walker = WalkBuilder::new(&root_path)
-        .hidden(!show_hidden)
+        // Never rely on the walker's hidden filter: allowlisted dev-config
+        // files must be matchable even with `show_hidden=false`, while
+        // dot-directories are pruned below instead.
+        .hidden(false)
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
         .ignore(true)
         .parents(true)
         .follow_links(false)
-        .filter_entry(|dent| {
+        .filter_entry(move |dent| {
             // Prune known-heavy dirs even when no .gitignore is present (e.g.
             // searching from $HOME).
             if dent.depth() == 0 {
                 return true;
             }
-            match dent.file_name().to_str() {
-                Some(name) => !PRUNE_DIRS.contains(&name),
-                None => true,
+            let Some(name) = dent.file_name().to_str() else {
+                return true;
+            };
+            if PRUNE_DIRS.contains(&name) {
+                return false;
             }
+            if show_hidden {
+                return true;
+            }
+            // Hidden mode: match allowlisted dev-config files, but never
+            // descend into dot-directories (`.git`, `.github`, …).
+            if !name.starts_with('.') {
+                return true;
+            }
+            dent.file_type().map(|t| t.is_file()).unwrap_or(false)
+                && is_dev_config_file(name)
         })
         .build();
 

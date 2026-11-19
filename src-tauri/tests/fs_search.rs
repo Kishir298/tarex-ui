@@ -200,6 +200,28 @@ fn search_prunes_node_modules() {
 }
 
 #[test]
+fn search_includes_dev_config_dotfiles_by_default() {
+    let fx = FsFixture::new();
+    fx.write(".gitignore", "target\n");
+    fx.write(".gitattributes", "* text=auto\n");
+    fx.write(".env", "SECRET=1\n");
+    fx.write("src/main.rs", "fn main() {}\n");
+
+    let hidden_off =
+        fs_search(fx.root_str(), "gitignore".into(), None, None, Some(false)).expect("search");
+    let rels: Vec<&str> = hidden_off.hits.iter().map(|h| h.rel.as_str()).collect();
+    assert!(rels.contains(&".gitignore"), "allowlisted dotfile must match: {rels:?}");
+
+    let env_off = fs_search(fx.root_str(), "env".into(), None, None, Some(false)).expect("search");
+    let rels: Vec<&str> = env_off.hits.iter().map(|h| h.rel.as_str()).collect();
+    assert!(!rels.contains(&".env"), ".env must stay hidden: {rels:?}");
+
+    let env_on = fs_search(fx.root_str(), "env".into(), None, None, Some(true)).expect("search");
+    let rels: Vec<&str> = env_on.hits.iter().map(|h| h.rel.as_str()).collect();
+    assert!(rels.contains(&".env"), "show_hidden=true must reveal .env: {rels:?}");
+}
+
+#[test]
 fn search_ranks_filename_hits_before_path_hits() {
     let fx = FsFixture::new();
     fx.write("zeta/inner.txt", "");
@@ -293,6 +315,51 @@ fn read_dir_hides_dotfiles_by_default() {
     let hidden_on = fs_read_dir(fx.root_str(), true, None, None).expect("read_dir");
     let names: Vec<&str> = hidden_on.iter().map(|e| e.name.as_str()).collect();
     assert!(names.contains(&".secret"));
+}
+
+#[test]
+fn read_dir_shows_dev_config_dotfiles_by_default() {
+    let fx = FsFixture::new();
+    fx.write(".gitignore", "");
+    fx.write(".gitattributes", "");
+    fx.write(".editorconfig", "");
+    fx.write(".dockerignore", "");
+    fx.write(".env", "SECRET=1\n");
+    fx.mkdir(".config");
+    fx.write("visible.txt", "");
+
+    let hidden_off = fs_read_dir(fx.root_str(), false, None, None).expect("read_dir");
+    let names: Vec<&str> = hidden_off.iter().map(|e| e.name.as_str()).collect();
+    assert!(names.contains(&".gitignore"));
+    assert!(names.contains(&".gitattributes"));
+    assert!(names.contains(&".editorconfig"));
+    assert!(names.contains(&".dockerignore"));
+    assert!(names.contains(&"visible.txt"));
+    // Sensitive files and directories stay hidden.
+    assert!(!names.contains(&".env"));
+    assert!(!names.contains(&".config"));
+
+    let hidden_on = fs_read_dir(fx.root_str(), true, None, None).expect("read_dir");
+    let names: Vec<&str> = hidden_on.iter().map(|e| e.name.as_str()).collect();
+    assert!(names.contains(&".env"));
+    assert!(names.contains(&".config"));
+}
+
+#[test]
+fn read_dir_does_not_flag_allowlisted_dotfile_gitignored() {
+    if !git_available() {
+        return;
+    }
+    let fx = GitRepoFixture::new();
+    fx.write_file(".gitignore", "ignored.txt\n");
+    fx.write_file("kept.txt", "");
+
+    let entries = fs_read_dir(fx.repo_str(), false, Some(true), None).expect("read_dir");
+    let entry = entries
+        .iter()
+        .find(|e| e.name == ".gitignore")
+        .expect(".gitignore must be listed with show_hidden=false");
+    assert!(!entry.gitignored);
 }
 
 #[test]

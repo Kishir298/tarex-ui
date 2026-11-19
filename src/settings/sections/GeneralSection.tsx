@@ -229,7 +229,7 @@ export function GeneralSection() {
         <Label>Explorer</Label>
         <SettingRow
           title="Show hidden files"
-          description="Include dot-prefixed files and folders (.env, .gitignore, .config) in the file explorer and search."
+          description="Include dot-prefixed files and folders (.env, .config) in the file explorer and search. Recognised dev files (.gitignore, .gitattributes, .editorconfig, .dockerignore) are always shown."
         >
           <Switch
             checked={showHidden}

@@ -35,3 +35,15 @@ src-tauri/binaries/
 
 # Local signing credentials
 .secrets/
+
+# Privacy and local secrets — never commit these
+.env
+.env.*
+!.env.example
+secrets.json
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc

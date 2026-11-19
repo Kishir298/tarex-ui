@@ -152,7 +152,7 @@ fn legacy_bundles(data: &Path, config: &Path) -> Vec<LegacyBundle> {
             modified,
         });
     }
-    bundles.sort_by(|a, b| b.modified.cmp(&a.modified));
+    bundles.sort_by_key(|a| std::cmp::Reverse(a.modified));
     bundles
 }
 

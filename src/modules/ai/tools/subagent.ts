@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { usePreferencesStore } from "@/modules/settings/preferences";
 import { runSubagent } from "../agents/runSubagent";
 import { SUBAGENTS, type SubagentType } from "../agents/registry";
 import { useChatStore } from "../store/chatStore";
@@ -29,16 +30,29 @@ Auto-executes (no approval) — subagents are read-only by design.`,
           .describe("Short label shown in the chat UI for the spawn card."),
       }),
       execute: async ({ type, prompt, description }) => {
-        const { apiKeys, selectedModelId, patchAgentMeta } =
-          useChatStore.getState();
+        const chat = useChatStore.getState();
+        const prefs = usePreferencesStore.getState();
         try {
           const r = await runSubagent({
             type,
             prompt,
-            keys: apiKeys,
-            modelId: selectedModelId,
+            keys: chat.apiKeys,
+            modelId: chat.selectedModelId,
             toolContext: ctx,
-            onStep: (label) => patchAgentMeta({ step: label }),
+            local: {
+              lmstudioBaseURL: prefs.lmstudioBaseURL,
+              lmstudioModelId: prefs.lmstudioModelId,
+              mlxBaseURL: prefs.mlxBaseURL,
+              mlxModelId: prefs.mlxModelId,
+              ollamaBaseURL: prefs.ollamaBaseURL,
+              ollamaModelId: prefs.ollamaModelId,
+              openaiCompatibleBaseURL: prefs.openaiCompatibleBaseURL,
+              openaiCompatibleModelId: prefs.openaiCompatibleModelId,
+              openrouterModelId: prefs.openrouterModelId,
+              customEndpoints: prefs.customEndpoints,
+              customEndpointKeys: chat.customEndpointKeys,
+            },
+            onStep: (label) => chat.patchAgentMeta({ step: label }),
           });
           return {
             type,

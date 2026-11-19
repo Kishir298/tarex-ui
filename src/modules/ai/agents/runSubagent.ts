@@ -1,6 +1,9 @@
 import { generateText, stepCountIs } from "ai";
-import { DEFAULT_MODEL_ID, getModel, type ModelId } from "../config";
-import { buildLanguageModel } from "../lib/agent";
+import { DEFAULT_MODEL_ID, type ModelId } from "../config";
+import {
+  buildConfiguredLanguageModel,
+  type LocalProviderConfig,
+} from "../lib/agent";
 import type { ProviderKeys } from "../lib/keyring";
 import type { ToolContext } from "../tools/context";
 import { buildFsTools } from "../tools/fs";
@@ -15,7 +18,9 @@ type Args = {
   keys: ProviderKeys;
   modelId: string;
   toolContext: ToolContext;
-  lmstudioBaseURL?: string;
+  /** Custom endpoints, endpoint keys, local base URLs and local model ids —
+   *  the same resolution inputs the main chat passes to the agent. */
+  local?: LocalProviderConfig;
   onStep?: (label: string) => void;
 };
 
@@ -31,7 +36,7 @@ export async function runSubagent({
   keys,
   modelId,
   toolContext,
-  lmstudioBaseURL,
+  local,
   onStep,
 }: Args): Promise<RunResult> {
   const def = SUBAGENTS[type];
@@ -46,12 +51,10 @@ export async function runSubagent({
     if (t in readOnly) tools[t] = readOnly[t];
   }
 
-  const model = await buildLanguageModel(
-    getModel(modelId as ModelId).provider,
-    keys,
-    getModel(modelId as ModelId).id,
-    { lmstudioBaseURL },
-  );
+  // Same resolution path as the main chat: handles built-in, compat-*,
+  // local (LM Studio/MLX/Ollama) and OpenAI-compatible model ids. Never
+  // cast a raw id to ModelId — getModel() throws for compat ids.
+  const model = await buildConfiguredLanguageModel(modelId, keys, local ?? {});
 
   const start = Date.now();
   const result = await generateText({

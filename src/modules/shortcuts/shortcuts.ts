@@ -1,4 +1,5 @@
 import { IS_MAC, MOD_PROP } from "@/lib/platform";
+import { isTerminalSurfaceTarget } from "@/modules/terminal/lib/terminalSurfaceTarget";
 
 /**
  * Single source of truth for keyboard shortcuts.
@@ -429,10 +430,52 @@ function keyFromCode(code: string): string | null {
   return CODE_TO_KEY[code] ?? null;
 }
 
+export const TERMINAL_DEFERRED_CTRL_KEYS: ReadonlySet<string> = new Set([
+  "a",
+  "c",
+  "d",
+  "e",
+  "f",
+  "k",
+  "l",
+  "n",
+  "p",
+  "r",
+  "u",
+  "v",
+  "w",
+  "y",
+  "z",
+]);
+
+const TERMINAL_TAB_SELECTOR = "[data-terminal-tab]";
+
+export function originatesInTerminal(target: EventTarget | null): boolean {
+  if (isTerminalSurfaceTarget(target)) return true;
+  const candidate = target as {
+    readonly closest?: (selector: string) => Element | null;
+  } | null;
+  if (typeof candidate?.closest !== "function") return false;
+  return candidate.closest(TERMINAL_TAB_SELECTOR) !== null;
+}
+
+export function defersToTerminal(
+  e: KeyboardEvent,
+  binding: KeyBinding,
+): boolean {
+  if (!binding.ctrl || binding.shift || binding.alt || binding.meta)
+    return false;
+  if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return false;
+  const key = binding.key.toLowerCase();
+  if (!TERMINAL_DEFERRED_CTRL_KEYS.has(key)) return false;
+  if (e.key.toLowerCase() !== key) return false;
+  return originatesInTerminal(e.target ?? null);
+}
+
 export function matchBinding(
   e: KeyboardEvent,
   binding: KeyBinding,
-  id?: ShortcutId
+  id?: ShortcutId,
 ): boolean {
   const eventKey = e.key.toLowerCase();
   const bindingKey = binding.key.toLowerCase();
@@ -444,6 +487,8 @@ export function matchBinding(
     if (!binding.alt && !binding.shift) return false;
     if (keyFromCode(e.code) !== bindingKey) return false;
   }
+
+  if (defersToTerminal(e, binding)) return false;
 
   return (
     !!e.ctrlKey === !!binding.ctrl &&

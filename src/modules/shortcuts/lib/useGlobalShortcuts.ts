@@ -3,15 +3,31 @@ import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
   SHORTCUTS,
   matchBinding,
+  type KeyBinding,
+  type Shortcut,
   type ShortcutId,
 } from "../shortcuts";
 
 export type ShortcutHandler = (e: KeyboardEvent) => void;
 export type ShortcutHandlers = Partial<Record<ShortcutId, ShortcutHandler>>;
 
+export type ShortcutBindings = Partial<Record<ShortcutId, KeyBinding[]>>;
+
 export type UseGlobalShortcutsOptions = {
   isDisabled?: (id: ShortcutId, e: KeyboardEvent) => boolean;
 };
+
+export function findTriggeredShortcut(
+  e: KeyboardEvent,
+  userShortcuts: ShortcutBindings,
+): Shortcut | null {
+  for (const s of SHORTCUTS) {
+    if (e.repeat && !s.allowRepeat) continue;
+    const bindings = userShortcuts[s.id] || s.defaultBindings;
+    if (bindings.some((b) => matchBinding(e, b, s.id))) return s;
+  }
+  return null;
+}
 
 export function useGlobalShortcuts(
   handlers: ShortcutHandlers,
@@ -26,19 +42,14 @@ export function useGlobalShortcuts(
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const { handlers, options } = latest.current;
-      for (const s of SHORTCUTS) {
-        if (e.repeat && !s.allowRepeat) continue;
-        const bindings = userShortcuts[s.id] || s.defaultBindings;
-        const isMatch = bindings.some((b) => matchBinding(e, b, s.id));
-        if (!isMatch) continue;
-        if (options?.isDisabled?.(s.id, e)) return;
-        const h = handlers[s.id];
-        if (!h) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        h(e);
-        return;
-      }
+      const shortcut = findTriggeredShortcut(e, userShortcuts);
+      if (!shortcut) return;
+      if (options?.isDisabled?.(shortcut.id, e)) return;
+      const h = handlers[shortcut.id];
+      if (!h) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      h(e);
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () =>

@@ -375,6 +375,129 @@ describe("GhosttyInputController", () => {
     controller.dispose();
   });
 
+  it("claims Ctrl+Shift+C only while a selection exists and otherwise reaches the PTY", () => {
+    const input = new FakeTextArea();
+    const onData = vi.fn();
+    const encodeKey = vi.fn(() => new Uint8Array([27, 99]));
+    const onCopy = vi.fn(() => true);
+    const controller = new GhosttyInputController({
+      model: { ...inputModel(), encodeKey },
+      input: input as unknown as HTMLTextAreaElement,
+      pointerTarget: new FakeElement() as unknown as HTMLElement,
+      cellSize: () => ({ width: 10, height: 20 }),
+      isMac: false,
+      onCopy,
+      onData,
+    });
+    try {
+      const copy = keyboardEvent({
+        key: "C",
+        code: "KeyC",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      input.dispatchEvent(copy);
+      expect(copy.defaultPrevented).toBe(true);
+      expect(onCopy).toHaveBeenCalledOnce();
+      expect(encodeKey).not.toHaveBeenCalled();
+      expect(onData).not.toHaveBeenCalled();
+
+      onCopy.mockReturnValue(false);
+      const noSelection = keyboardEvent({
+        key: "C",
+        code: "KeyC",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      input.dispatchEvent(noSelection);
+      expect(noSelection.defaultPrevented).toBe(true);
+      expect(onCopy).toHaveBeenCalledTimes(2);
+      expect(encodeKey).toHaveBeenCalledOnce();
+      expect(onData).toHaveBeenCalledOnce();
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  it("delivers plain Ctrl+C as the PTY interrupt even when text is selected", () => {
+    const input = new FakeTextArea();
+    const onData = vi.fn();
+    const encodeKey = vi.fn(() => new Uint8Array([3]));
+    const onCopy = vi.fn(() => true);
+    const controller = new GhosttyInputController({
+      model: { ...inputModel(), encodeKey },
+      input: input as unknown as HTMLTextAreaElement,
+      pointerTarget: new FakeElement() as unknown as HTMLElement,
+      cellSize: () => ({ width: 10, height: 20 }),
+      isMac: false,
+      onCopy,
+      onData,
+    });
+    try {
+      const interrupt = keyboardEvent({
+        key: "c",
+        code: "KeyC",
+        ctrlKey: true,
+      });
+      input.dispatchEvent(interrupt);
+      expect(interrupt.defaultPrevented).toBe(true);
+      expect(onCopy).not.toHaveBeenCalled();
+      expect(encodeKey).toHaveBeenCalledOnce();
+      expect(new TextDecoder().decode(onData.mock.calls[0][0])).toBe("\x03");
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  it("pastes non-macOS Ctrl+Shift+V through the PTY and leaves plain Ctrl+V to the shell", async () => {
+    const input = new FakeTextArea();
+    const onData = vi.fn();
+    const encodeKey = vi.fn(() => new Uint8Array([22]));
+    const model = inputModel();
+    const controller = new GhosttyInputController({
+      model: {
+        ...model,
+        encodeKey,
+        modes: () => ({ ...model.modes(), bracketedPaste: true }),
+      },
+      input: input as unknown as HTMLTextAreaElement,
+      pointerTarget: new FakeElement() as unknown as HTMLElement,
+      cellSize: () => ({ width: 10, height: 20 }),
+      isMac: false,
+      onCopy: () => false,
+      onData,
+    });
+    try {
+      clipboard.readTerminalPaste.mockResolvedValue("hello");
+      const paste = keyboardEvent({
+        key: "V",
+        code: "KeyV",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      input.dispatchEvent(paste);
+      expect(paste.defaultPrevented).toBe(true);
+      await vi.waitFor(() => expect(onData).toHaveBeenCalledTimes(1));
+      expect(new TextDecoder().decode(onData.mock.calls[0][0])).toBe(
+        "\x1b[200~hello\x1b[201~",
+      );
+
+      clipboard.readTerminalPaste.mockClear();
+      const literal = keyboardEvent({
+        key: "v",
+        code: "KeyV",
+        ctrlKey: true,
+      });
+      input.dispatchEvent(literal);
+      expect(literal.defaultPrevented).toBe(true);
+      expect(clipboard.readTerminalPaste).not.toHaveBeenCalled();
+      expect(encodeKey).toHaveBeenCalledOnce();
+      expect(new TextDecoder().decode(onData.mock.calls[1][0])).toBe("\x16");
+    } finally {
+      controller.dispose();
+    }
+  });
+
   it("commits IME text once and leaves dead-key composition to the webview", () => {
     const input = new FakeTextArea();
     const onData = vi.fn();

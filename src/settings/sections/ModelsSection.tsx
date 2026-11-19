@@ -22,7 +22,9 @@ import {
   type CustomEndpoint,
   compatModelIdForEndpoint,
   getProvider,
+  MODELS,
   type ModelId,
+  type ModelInfo,
   PROVIDERS,
   type ProviderId,
   type ProviderInfo,
@@ -555,10 +557,18 @@ function DefaultModelPicker({
   configuredIds: Set<ProviderId>;
 }) {
   const customEndpoints = usePreferencesStore((s) => s.customEndpoints);
-  const models = useMemo(
-    () => endpointModels(customEndpoints),
-    [customEndpoints],
-  );
+  // Built-in catalog alongside configured custom endpoints. The legacy
+  // single-endpoint sentinel is unconfigurable, so it is never offered.
+  const models = useMemo(() => {
+    const seen = new Set<string>();
+    const out: ModelInfo[] = [];
+    for (const m of [...endpointModels(customEndpoints), ...MODELS]) {
+      if (m.id === "openai-compatible-custom" || seen.has(m.id)) continue;
+      seen.add(m.id);
+      out.push(m);
+    }
+    return out;
+  }, [customEndpoints]);
   const m = models.find((model) => model.id === defaultModel) ?? models[0];
   const hasAny = models.length > 0;
 
@@ -571,9 +581,9 @@ function DefaultModelPicker({
           className="h-8 flex-1 justify-between gap-2 px-2.5 text-[11.5px]"
         >
           <span className="flex items-center gap-2 truncate">
-            <ProviderIcon provider="openai-compatible" size={13} />
+            <ProviderIcon provider={m?.provider ?? "openai-compatible"} size={13} />
             <span className="truncate">
-              {m?.label ?? "No custom endpoints"}
+              {m?.label ?? "No models available"}
             </span>
             <span className="text-muted-foreground">{m?.hint}</span>
           </span>

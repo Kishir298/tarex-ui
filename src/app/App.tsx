@@ -541,26 +541,21 @@ export default function App() {
   }, [tabs, activeId]);
 
   const togglePanelAndFocus = useCallback(() => {
-    if (!hasComposer) {
-      void openSettingsWindow("models");
-      return;
-    }
+    // The panel always opens — `hasComposer` is onboarding UI only (TAREX.md
+    // "AI behavior"); the input bar shows the Connect hint when nothing is
+    // configured yet.
     if (panelOpen) {
       useChatStore.getState().closePanel();
     } else {
       openPanel();
       focusInput(null);
     }
-  }, [hasComposer, panelOpen, openPanel, focusInput]);
+  }, [panelOpen, openPanel, focusInput]);
 
   const attachSelection = useChatStore((s) => s.attachSelection);
 
   const handleAttachFileToAgent = useCallback(
     (path: string) => {
-      if (!hasComposer) {
-        void openSettingsWindow("models");
-        return;
-      }
       // Dispatch a window event the composer listens for. Same pattern as
       // selections — keeps file-explorer decoupled from the AI module.
       window.dispatchEvent(
@@ -569,14 +564,10 @@ export default function App() {
       openPanel();
       focusInput(null);
     },
-    [hasComposer, openPanel, focusInput],
+    [openPanel, focusInput],
   );
 
   const askFromSelection = useCallback(() => {
-    if (!hasComposer) {
-      void openSettingsWindow("models");
-      return;
-    }
     const selection = captureActiveSelection();
     if (!selection || !selection.trim()) {
       focusInput(null);
@@ -585,13 +576,7 @@ export default function App() {
     const source: "terminal" | "editor" =
       activeTab?.kind === "editor" ? "editor" : "terminal";
     attachSelection(selection, source);
-  }, [
-    hasComposer,
-    captureActiveSelection,
-    focusInput,
-    attachSelection,
-    activeTab,
-  ]);
+  }, [captureActiveSelection, focusInput, attachSelection, activeTab]);
 
   const { askPopup, setAskPopup, onAskFromSelection } = useSelectionAskAi({
     captureActiveSelection,
@@ -940,10 +925,6 @@ export default function App() {
       },
       "ai.toggle": togglePanelAndFocus,
       "ai.toggleMini": () => {
-        if (!hasComposer) {
-          void openSettingsWindow("models");
-          return;
-        }
         toggleMini();
       },
       "ai.askSelection": onAskFromSelection,
@@ -986,7 +967,6 @@ export default function App() {
       focusNextPaneInTab,
       swapActivePane,
       toggleSourceControl,
-      hasComposer,
       togglePanelAndFocus,
       toggleMini,
       onAskFromSelection,
@@ -1655,9 +1635,7 @@ export default function App() {
             </>
           ) : null}
 
-          {hasComposer && miniPresence.mounted ? (
-            <AiMiniWindow state={miniPresence.state} />
-          ) : null}
+          {miniPresence.mounted ? <AiMiniWindow state={miniPresence.state} /> : null}
           {askPresence.mounted ? (
             <SelectionAskAi
               state={askPresence.state}

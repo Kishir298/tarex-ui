@@ -43,10 +43,12 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMemo, useRef, useState } from "react";
 import {
-  getCompatModelInfo,
+  DEFAULT_MODEL_ID,
   isCompatModelId,
+  MODELS,
   providerNeedsKey,
   PROVIDERS,
+  resolveModel,
   type ModelCapabilities,
   type ModelInfo,
   type ProviderId,
@@ -193,15 +195,52 @@ function ModelDropdown() {
   const favoriteIds = usePreferencesStore((s) => s.favoriteModelIds);
   const recentIds = usePreferencesStore((s) => s.recentModelIds);
   const customEndpoints = usePreferencesStore((s) => s.customEndpoints);
-  const current = getCompatModelInfo(
-    endpointModelId(selected, customEndpoints),
-    customEndpoints,
-  );
   const [search, setSearch] = useState("");
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("all");
   const inputRef = useRef<HTMLInputElement>(null);
-  const currentProviderHasKey = isCompatModelId(selected)
+
+  const epModelInfos = useMemo(
+    () => endpointModels(customEndpoints),
+    [customEndpoints],
+  );
+
+  // Built-in catalog alongside the configured custom endpoints. The legacy
+  // single-endpoint sentinel (`openai-compatible-custom`) is unconfigurable
+  // in Settings, so it never appears as a selectable row.
+  const allModels = useMemo(() => {
+    const seen = new Set<string>();
+    const out: ModelInfo[] = [];
+    for (const m of [...MODELS, ...epModelInfos]) {
+      if (m.id === "openai-compatible-custom" || seen.has(m.id)) continue;
+      seen.add(m.id);
+      out.push(m);
+    }
+    return out;
+  }, [epModelInfos]);
+
+  // Resolve the live selection: a stale custom-endpoint id falls back to
+  // another endpoint (or the default model) instead of crashing the label.
+  const currentId = useMemo(() => {
+    if (isCompatModelId(selected)) {
+      return endpointModelId(selected, customEndpoints) || DEFAULT_MODEL_ID;
+    }
+    return allModels.some((m) => m.id === selected)
+      ? selected
+      : DEFAULT_MODEL_ID;
+  }, [selected, customEndpoints, allModels]);
+  const current = useMemo(
+    () =>
+      (() => {
+        try {
+          return resolveModel(currentId, customEndpoints);
+        } catch {
+          return resolveModel(DEFAULT_MODEL_ID, customEndpoints);
+        }
+      })(),
+    [currentId, customEndpoints],
+  );
+  const currentProviderHasKey = isCompatModelId(current.id)
     ? true
     : providerNeedsKey(current.provider)
       ? !!apiKeys[current.provider]
@@ -210,27 +249,20 @@ function ModelDropdown() {
   const hasKeyFor = (id: ProviderId) =>
     providerNeedsKey(id) ? !!apiKeys[id] : true;
 
-  const epModelInfos = useMemo(
-    () => endpointModels(customEndpoints),
-    [customEndpoints],
-  );
-
   const sortedProviders = useMemo(() => {
     const configured: (typeof PROVIDERS)[number][] = [];
     const unconfigured: (typeof PROVIDERS)[number][] = [];
     for (const p of PROVIDERS) {
       if (
         p.id === "openai-compatible" ||
-        !epModelInfos.some((model) => model.provider === p.id)
+        !allModels.some((model) => model.provider === p.id)
       )
         continue;
       (hasKeyFor(p.id) ? configured : unconfigured).push(p);
     }
     return { configured, unconfigured };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKeys, epModelInfos]);
-
-  const allModels = useMemo(() => epModelInfos, [epModelInfos]);
+  }, [apiKeys, allModels]);
 
   const COMPAT_PROVIDER_ID = "__compat__";
 
@@ -283,7 +315,7 @@ function ModelDropdown() {
               : `${current.label} — no key configured`
           }
         >
-          {epModelInfos.length ? current.label : "Configure custom endpoints"}
+          {current.label}
           <HugeiconsIcon
             icon={ArrowDown01Icon}
             size={11}
@@ -406,7 +438,7 @@ function ModelDropdown() {
                 <ModelRow
                   key={m.id}
                   model={m}
-                  selected={m.id === selected}
+                  selected={m.id === currentId}
                   hasKey={isCompatModelId(m.id) || hasKeyFor(m.provider)}
                   favorite={favoriteIds.includes(m.id)}
                   showProviderIcon={activeProvider === null}

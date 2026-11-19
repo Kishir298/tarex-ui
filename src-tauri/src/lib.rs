@@ -281,6 +281,7 @@ pub fn run() {
             modules::keyboard::keyboard_layout,
             modules::process_control::suspended_processes,
             modules::process_control::control_process,
+            modules::process_control::efficiency_mode_set,
             pty::pty_open,
             pty::pty_write,
             pty::pty_ack_output,
@@ -383,6 +384,13 @@ pub fn run() {
                 tauri::RunEvent::Exit => {
                     if let Some(state) = app.try_state::<modules::terminal_clipboard::TerminalClipboardState>() {
                         state.cleanup();
+                    }
+                    // Never leave processes the user suspended in a stopped
+                    // state once Tarex is gone.
+                    if let Some(state) =
+                        app.try_state::<modules::process_control::ProcessControlState>()
+                    {
+                        state.resume_suspended_on_exit(app);
                     }
                     #[cfg(target_os = "macos")]
                     modules::window_presentation::macos::uninstall();

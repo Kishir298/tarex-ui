@@ -31,7 +31,8 @@ pub struct Snapshot {
     kernel: String,
     architecture: String,
     uptime: u64,
-    cpu_name: String,
+    /// `None` when the platform does not report a CPU brand — never "".
+    cpu_name: Option<String>,
     cpu: Vec<f32>,
     memory_used: u64,
     memory_total: u64,
@@ -100,16 +101,19 @@ impl Monitor {
                 .cpus()
                 .first()
                 .map(|c| c.brand().to_owned())
-                .unwrap_or_default(),
+                .filter(|brand| !brand.trim().is_empty()),
             cpu: self.system.cpus().iter().map(|c| c.cpu_usage()).collect(),
             memory_used: self.system.used_memory(),
             memory_total: self.system.total_memory(),
             swap_used: self.system.used_swap(),
             swap_total: self.system.total_swap(),
             processes: self.processes.clone(),
+            // A disk reporting no capacity was not measured; omit it rather
+            // than present a fabricated zero.
             disks: self
                 .disks
                 .iter()
+                .filter(|disk| disk.total_space() > 0)
                 .map(|disk| Disk {
                     mount: disk.mount_point().to_string_lossy().into_owned(),
                     total: disk.total_space(),
@@ -149,6 +153,8 @@ mod tests {
         assert_eq!(state.0.lock().unwrap().details_sampled, details_sampled);
         assert!(s.processes.len() <= 5);
         assert!(s.memory_used <= s.memory_total);
+        assert!(s.cpu_name.as_deref().is_none_or(|b| !b.trim().is_empty()));
+        assert!(s.disks.iter().all(|d| d.total > 0));
         assert!(s
             .cpu
             .iter()

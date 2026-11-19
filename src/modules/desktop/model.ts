@@ -4,7 +4,7 @@ export interface SystemSnapshot {
   kernel: string;
   architecture: string;
   uptime: number;
-  cpuName: string;
+  cpuName: string | null;
   cpu: number[];
   memoryUsed: number;
   memoryTotal: number;
@@ -22,6 +22,46 @@ export function bytes(value: number | undefined): string {
     Math.max(0, Math.floor(Math.log2(Math.max(1, value)) / 10)),
   );
   return `${(value / 1024 ** index).toFixed(index > 0 ? 1 : 0)} ${units[index]}`;
+}
+
+/** Unreported strings never render as if they were measured. */
+export function textOr(
+  value: string | null | undefined,
+  fallback = "--",
+): string {
+  return value?.trim() ? value : fallback;
+}
+
+/** A zero or absent total means the OS did not report the device. */
+export function usagePair(
+  used: number | undefined,
+  total: number | undefined,
+): string {
+  if (total === undefined || !Number.isFinite(total) || total <= 0) return "--";
+  return `${bytes(used)} / ${bytes(total)}`;
+}
+
+export const TELEMETRY_INTERVAL_MS = 5_000;
+export const TELEMETRY_INTERVAL_EFFICIENCY_MS = 15_000;
+
+/** Efficiency Mode slows Tarex's own sampling; other apps are untouched. */
+export function telemetryIntervalMs(efficiencyMode: boolean): number {
+  return efficiencyMode
+    ? TELEMETRY_INTERVAL_EFFICIENCY_MS
+    : TELEMETRY_INTERVAL_MS;
+}
+
+/** Lightweight filter for the process manager table. */
+export function processMatches(
+  process: { pid: number; name: string },
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return (
+    process.name.toLowerCase().includes(needle) ||
+    String(process.pid).includes(needle)
+  );
 }
 
 export function parentPath(path: string): string {

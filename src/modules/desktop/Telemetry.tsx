@@ -1,6 +1,12 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: Hardware core indexes and fixed memory cells never reorder.
-import { bytes, type SystemSnapshot } from "@/modules/desktop/model";
+import {
+  telemetryIntervalMs,
+  textOr,
+  type SystemSnapshot,
+  usagePair,
+} from "@/modules/desktop/model";
 import { Processes } from "@/modules/desktop/Processes";
+import { usePreferencesStore } from "@/modules/settings/preferences";
 import { subscribeWindowPresentation } from "@/modules/terminal/ghostty/windowPresentation";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
@@ -13,6 +19,17 @@ export function useTelemetry(enabled = true) {
   const [error, setError] = useState("");
   const [revision,setRevision]=useState(0);
   const refresh=useCallback(()=>setRevision(value=>value+1),[]);
+  const efficiencyMode = usePreferencesStore((s) => s.efficiencyMode);
+  const prefsHydrated = usePreferencesStore((s) => s.hydrated);
+  // Apply Efficiency Mode to Tarex's own process priority once the persisted
+  // preference is known. Toggling off is driven by the Settings switch, which
+  // reports the OS answer directly.
+  useEffect(() => {
+    if (!prefsHydrated || !efficiencyMode) return;
+    void invoke("efficiency_mode_set", { enabled: true }).catch((e) =>
+      console.warn("efficiency mode could not lower Tarex priority", e),
+    );
+  }, [prefsHydrated, efficiencyMode]);
   useEffect(() => {
     if (!enabled) return;
     let disposed = false;
@@ -41,7 +58,8 @@ export function useTelemetry(enabled = true) {
         if (!disposed && visible) setError(String(e));
       } finally {
         pending = false;
-        if (!disposed && visible) timer = setTimeout(sample, 5000);
+        if (!disposed && visible)
+          timer = setTimeout(sample, telemetryIntervalMs(efficiencyMode));
       }
     };
     const unsubscribe = subscribeWindowPresentation((state) => {
@@ -54,7 +72,7 @@ export function useTelemetry(enabled = true) {
       clearTimeout(timer);
       unsubscribe();
     };
-  }, [enabled,revision]);
+  }, [enabled, revision, efficiencyMode]);
   return { snapshot, history, error,refresh };
 }
 
@@ -151,8 +169,8 @@ export function SystemRail({
   error,
   refresh,
 }: ReturnType<typeof useTelemetry>) {
-  const average = s
-    ? s.cpu.reduce((a, b) => a + b, 0) / Math.max(1, s.cpu.length)
+  const average = s?.cpu.length
+    ? s.cpu.reduce((a, b) => a + b, 0) / s.cpu.length
     : 0;
   const memory = s?.memoryTotal ? s.memoryUsed / s.memoryTotal : 0;
   const uptime = s
@@ -172,25 +190,25 @@ export function SystemRail({
         </div>
         <div>
           <dt>TYPE</dt>
-          <dd>{s?.os ?? "--"}</dd>
+          <dd>{textOr(s?.os)}</dd>
         </div>
         <div>
           <dt>ARCH</dt>
-          <dd>{s?.architecture ?? "--"}</dd>
+          <dd>{textOr(s?.architecture)}</dd>
         </div>
       </dl>
       <div className="tarex-hardware">
         <span>HOST / KERNEL</span>
-        <strong title={s?.hostname}>{s?.hostname ?? "CONNECTING"}</strong>
-        <span>{s?.kernel ?? "NATIVE SYSTEM"}</span>
-        <strong title={s?.cpuName}>{s?.cpuName ?? "--"}</strong>
+        <strong title={s?.hostname ?? undefined}>{textOr(s?.hostname, "CONNECTING")}</strong>
+        <span>{textOr(s?.kernel)}</span>
+        <strong title={s?.cpuName ?? undefined}>{textOr(s?.cpuName, "Unavailable")}</strong>
       </div>
       <div className="tarex-rule">
         <span>CPU USAGE</span>
-        <span>{s ? `${average.toFixed(1)}%` : "--"}</span>
+        <span>{s?.cpu.length ? `${average.toFixed(1)}%` : "--"}</span>
       </div>
       <div className="tarex-graph-caption">
-        <span>AVG. {s?.cpu.length ?? "--"} THREADS</span>
+        <span>AVG. {s?.cpu.length ? s.cpu.length : "--"} THREADS</span>
         <span>100%</span>
       </div>
       <Chart
@@ -210,11 +228,11 @@ export function SystemRail({
       <dl className="tarex-machine-summary">
         <div>
           <dt>CPU</dt>
-          <dd>{s ? `${average.toFixed(0)}%` : "--"}</dd>
+          <dd>{s?.cpu.length ? `${average.toFixed(0)}%` : "--"}</dd>
         </div>
         <div>
           <dt>CORES</dt>
-          <dd>{s?.cpu.length ?? "--"}</dd>
+          <dd>{s?.cpu.length ? s.cpu.length : "--"}</dd>
         </div>
         <div>
           <dt>TASKS</dt>
@@ -223,14 +241,16 @@ export function SystemRail({
       </dl>
       <div className="tarex-rule">
         <span>MEMORY</span>
-        <span>
-          {bytes(s?.memoryUsed)} / {bytes(s?.memoryTotal)}
-        </span>
+        <span>{usagePair(s?.memoryUsed, s?.memoryTotal)}</span>
       </div>
       <div
         className="tarex-memory-map"
         role="img"
-        aria-label={`Memory ${(memory * 100).toFixed(0)} percent used`}
+        aria-label={
+          s?.memoryTotal
+            ? `Memory ${(memory * 100).toFixed(0)} percent used`
+            : "Memory unavailable"
+        }
       >
         {Array.from({ length: 200 }, (_, index) => (
           <i
@@ -241,17 +261,17 @@ export function SystemRail({
       </div>
       <div className="tarex-rule">
         <span>SWAP</span>
-        <span>
-          {bytes(s?.swapUsed)} / {bytes(s?.swapTotal)}
-        </span>
+        <span>{usagePair(s?.swapUsed, s?.swapTotal)}</span>
       </div>
-      <div className="tarex-meter">
-        <i
-          style={{
-            width: `${s?.swapTotal ? (s.swapUsed / s.swapTotal) * 100 : 0}%`,
-          }}
-        />
-      </div>
+      {s?.swapTotal ? (
+        <div className="tarex-meter">
+          <i
+            style={{
+              width: `${(s.swapUsed / s.swapTotal) * 100}%`,
+            }}
+          />
+        </div>
+      ) : null}
       <div className="tarex-rule">
         <span>TOP PROCESSES</span>
         <span>CPU / MEM</span>

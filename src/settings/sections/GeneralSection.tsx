@@ -21,6 +21,7 @@ import {
   setAutostart,
   setConfirmCloseRunningTerminal,
   setDefaultWorkspaceEnv,
+  setEfficiencyMode,
   setExplorerGitDecorations,
   setRestoreWindowState,
   setShowHidden,
@@ -93,6 +94,8 @@ export function GeneralSection() {
 
   const autostart = usePreferencesStore((s) => s.autostart);
   const restoreWindowState = usePreferencesStore((s) => s.restoreWindowState);
+  const efficiencyMode = usePreferencesStore((s) => s.efficiencyMode);
+  const [efficiencyNote, setEfficiencyNote] = useState("");
   const showHidden = usePreferencesStore((s) => s.showHidden);
   const explorerGitDecorations = usePreferencesStore(
     (s) => s.explorerGitDecorations,
@@ -169,6 +172,17 @@ export function GeneralSection() {
     } catch (e) {
       console.error("autostart toggle failed", e);
     }
+  };
+
+  const onToggleEfficiency = async (next: boolean) => {
+    try {
+      await invoke("efficiency_mode_set", { enabled: next });
+      setEfficiencyNote("");
+    } catch (e) {
+      // The OS may refuse to raise priority again; say so instead of hiding it.
+      setEfficiencyNote(String(e));
+    }
+    await setEfficiencyMode(next);
   };
 
   return (
@@ -543,6 +557,24 @@ export function GeneralSection() {
             onCheckedChange={(v) => void setAgentNotificationSound(v)}
           />
         </SettingRow>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>Performance</Label>
+        <SettingRow
+          title="Efficiency Mode"
+          description="Lowers Tarex's own process priority and slows Tarex's own system sampling while it is on. It affects Tarex only — other apps and the system are never throttled. If the OS blocks raising priority again, normal priority returns on the next Tarex start."
+        >
+          <Switch
+            checked={efficiencyMode}
+            onCheckedChange={(v) => void onToggleEfficiency(v)}
+          />
+        </SettingRow>
+        {efficiencyNote && (
+          <p role="status" className="text-[11px] text-destructive">
+            {efficiencyNote}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">

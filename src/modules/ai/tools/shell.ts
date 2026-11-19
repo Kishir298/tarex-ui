@@ -2,30 +2,13 @@ import { tool } from "ai";
 import { z } from "zod";
 import { native } from "../lib/native";
 import { checkShellCommand } from "../lib/security";
+import {
+  getSessionShell,
+  workspaceSessionKey,
+} from "../lib/sessionShells";
 import type { ToolContext } from "./context";
-import { currentWorkspaceEnv, workspaceScopeKey } from "@/modules/workspace";
 
-/**
- * Per-session lazy shell-session id. The agent gets one persistent shell per
- * chat session, so cwd survives across tool calls (cd, mkdir+cd, etc).
- */
-const sessionShells = new Map<string, Promise<number>>();
-
-async function getSessionShell(
-  sessionId: string,
-  cwd: string | null,
-): Promise<number> {
-  let p = sessionShells.get(sessionId);
-  if (!p) {
-    p = native.shellSessionOpen(cwd);
-    sessionShells.set(sessionId, p);
-  }
-  return p;
-}
-
-function workspaceSessionKey(sessionId: string): string {
-  return `${sessionId}:${workspaceScopeKey(currentWorkspaceEnv())}`;
-}
+export { closeSessionShells, closeWorkspaceShells } from "../lib/sessionShells";
 
 export function buildShellTools(ctx: ToolContext) {
   return {
@@ -96,7 +79,9 @@ export function buildShellTools(ctx: ToolContext) {
       }),
       execute: async ({ handle, since_offset }) => {
         try {
-          const r = await native.shellBgLogs(handle, since_offset);
+          // Cap the read at ~64 KiB so a tail never floods the model context
+          // with the full 4 MiB ring buffer.
+          const r = await native.shellBgLogs(handle, since_offset, 64 * 1024);
           return r;
         } catch (e) {
           return { error: String(e) };

@@ -10,27 +10,34 @@ const TAREX_MD_MAX_BYTES = 32 * 1024;
 type MemoryCacheEntry = { content: string | null; mtime: number };
 const projectMemoryCache = new Map<string, MemoryCacheEntry>();
 
-async function readTarexMd(workspaceRoot: string | null): Promise<string | null> {
+/**
+ * Project memory for the agent: read `TAREX.md` first, fall back to the
+ * legacy `TERAX.md` (TAREX.md "AI behavior"). Result is cached per workspace
+ * root for 30 s; a miss on both files caches `null` for the same window.
+ */
+export async function readProjectMemory(
+  workspaceRoot: string | null,
+): Promise<string | null> {
   if (!workspaceRoot) return null;
-  const path = `${workspaceRoot.replace(/\/$/, "")}/TAREX.md`;
   const cached = projectMemoryCache.get(workspaceRoot);
   if (cached && Date.now() - cached.mtime < 30_000) return cached.content;
-  try {
-    const r = await native.readFile(path);
-    if (r.kind !== "text") {
-      projectMemoryCache.set(workspaceRoot, { content: null, mtime: Date.now() });
-      return null;
+  const base = workspaceRoot.replace(/\/$/, "");
+  for (const name of ["TAREX.md", "TERAX.md"]) {
+    try {
+      const r = await native.readFile(`${base}/${name}`);
+      if (r.kind !== "text") continue;
+      const content =
+        r.content.length > TAREX_MD_MAX_BYTES
+          ? r.content.slice(0, TAREX_MD_MAX_BYTES)
+          : r.content;
+      projectMemoryCache.set(workspaceRoot, { content, mtime: Date.now() });
+      return content;
+    } catch {
+      // missing or unreadable — try the legacy name next
     }
-    const content =
-      r.content.length > TAREX_MD_MAX_BYTES
-        ? r.content.slice(0, TAREX_MD_MAX_BYTES)
-        : r.content;
-    projectMemoryCache.set(workspaceRoot, { content, mtime: Date.now() });
-    return content;
-  } catch {
-    projectMemoryCache.set(workspaceRoot, { content: null, mtime: Date.now() });
-    return null;
   }
+  projectMemoryCache.set(workspaceRoot, { content: null, mtime: Date.now() });
+  return null;
 }
 
 type LiveSnapshot = {
@@ -75,7 +82,7 @@ type SendOptions = {
 export function createContextAwareTransport(deps: Deps) {
   const run = async (options: SendOptions) => {
     const live = deps.getLive();
-    const projectMemory = await readTarexMd(live.workspaceRoot);
+    const projectMemory = await readProjectMemory(live.workspaceRoot);
     const envBlock = formatEnvBlock(live);
     const messagesForRun = envBlock
       ? injectEnvIntoLastUser(options.messages, envBlock)

@@ -5,6 +5,7 @@ import type { ToolContext } from "./context";
 const nativeMock = vi.hoisted(() => ({
   shellSessionOpen: vi.fn(async () => 1),
   shellSessionRun: vi.fn(),
+  shellSessionClose: vi.fn(async () => undefined),
   shellBgSpawn: vi.fn(async () => 7),
   shellBgLogs: vi.fn(),
   shellBgList: vi.fn(),
@@ -22,9 +23,10 @@ vi.mock("../lib/security", () => securityMock);
 vi.mock("@/modules/workspace", () => ({
   currentWorkspaceEnv: () => ({ kind: "local" }),
   workspaceScopeKey: () => "local",
+  useWorkspaceEnvStore: { subscribe: vi.fn(() => () => {}) },
 }));
 
-import { buildShellTools } from "./shell";
+import { buildShellTools, closeSessionShells } from "./shell";
 
 const toolOptions: ToolExecutionOptions = {
   toolCallId: "tool-call",
@@ -68,6 +70,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   securityMock.checkShellCommand.mockReturnValue({ ok: true });
   nativeMock.shellSessionOpen.mockResolvedValue(1);
+  closeSessionShells("session");
 });
 
 describe("bash_run", () => {
@@ -102,6 +105,54 @@ describe("bash_run", () => {
     expect(r.exit_code).toBe(0);
     expect(r.cwd_after).toBe("/workspace/sub");
   });
+
+  it("does not cache a rejected session open — the next call retries", async () => {
+    nativeMock.shellSessionOpen
+      .mockRejectedValueOnce(new Error("spawn failed"))
+      .mockResolvedValue(42);
+    nativeMock.shellSessionRun.mockResolvedValue({
+      stdout: "ok",
+      stderr: "",
+      exit_code: 0,
+      timed_out: false,
+      truncated: false,
+      cwd_after: "/workspace",
+    });
+
+    const first = await run("bash_run", makeContext("rej-1"), {
+      command: "ls",
+    });
+    expect(first.error).toContain("spawn failed");
+    expect(nativeMock.shellSessionOpen).toHaveBeenCalledTimes(1);
+
+    const second = await run("bash_run", makeContext("rej-1"), {
+      command: "ls",
+    });
+    expect(second.stdout).toBe("ok");
+    expect(nativeMock.shellSessionOpen).toHaveBeenCalledTimes(2);
+    expect(nativeMock.shellSessionRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("reopens the shell after the chat session's shells were closed", async () => {
+    nativeMock.shellSessionRun.mockResolvedValue({
+      stdout: "a",
+      stderr: "",
+      exit_code: 0,
+      timed_out: false,
+      truncated: false,
+      cwd_after: "/workspace",
+    });
+    await run("bash_run", makeContext("close-1"), { command: "pwd" });
+    expect(nativeMock.shellSessionOpen).toHaveBeenCalledTimes(1);
+
+    closeSessionShells("close-1");
+    // closeSessionShells fires the backend close on a promise continuation.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(nativeMock.shellSessionClose).toHaveBeenCalledWith(1);
+
+    await run("bash_run", makeContext("close-1"), { command: "pwd" });
+    expect(nativeMock.shellSessionOpen).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("bash_background", () => {
@@ -132,7 +183,7 @@ describe("bash_background", () => {
 });
 
 describe("bash_logs / bash_list / bash_kill", () => {
-  it("returns background logs", async () => {
+  it("returns background logs capped at 64 KiB", async () => {
     nativeMock.shellBgLogs.mockResolvedValue({
       chunk: "log",
       next_offset: 3,
@@ -140,6 +191,17 @@ describe("bash_logs / bash_list / bash_kill", () => {
     });
     const r = await run("bash_logs", makeContext(), { handle: 7 });
     expect(r.next_offset).toBe(3);
+    expect(nativeMock.shellBgLogs).toHaveBeenCalledWith(7, undefined, 65536);
+  });
+
+  it("forwards since_offset together with the 64 KiB cap", async () => {
+    nativeMock.shellBgLogs.mockResolvedValue({
+      chunk: "log",
+      next_offset: 9,
+      dropped: 0,
+    });
+    await run("bash_logs", makeContext(), { handle: 7, since_offset: 4 });
+    expect(nativeMock.shellBgLogs).toHaveBeenCalledWith(7, 4, 65536);
   });
 
   it("wraps the process list", async () => {

@@ -24,6 +24,7 @@ import {
   type SessionMeta,
 } from "../lib/sessions";
 import { pushRecentModel } from "../lib/modelPrefs";
+import { closeSessionShells } from "../lib/sessionShells";
 
 export type Live = {
   getCwd: () => string | null;
@@ -357,6 +358,7 @@ export const useChatStore = create<StoreState>((set, get) => ({
     chats.get(id)?.stop();
     chats.delete(id);
     seedMessages.delete(id);
+    closeSessionShells(id);
     const pend = pendingPersist.get(id);
     if (pend) {
       clearTimeout(pend.timer);

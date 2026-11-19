@@ -81,6 +81,13 @@ async function proxyFetchImpl(
     let cancelled = false;
 
     const onAbort = () => {
+      // Client-side abort only: the Rust `ai_http_stream` command has no
+      // cancel path (no request-id registry / `ai_http_cancel` command, and
+      // the JS Channel cannot signal the running command to stop). We stop
+      // consuming events and error the response stream, but the backend keeps
+      // draining the HTTP response until it completes. Wiring real
+      // cancellation would require a Tauri-command protocol change in
+      // src-tauri/src/modules/net.rs — intentionally not done here.
       cancelled = true;
       if (!resolved) {
         reject(makeAbortError());

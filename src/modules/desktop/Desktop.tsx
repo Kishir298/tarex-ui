@@ -59,10 +59,30 @@ type Props = {
 };
 
 export function Desktop(props: Props) {
-  const [fileMode, setFileMode] = useState(true);
+  const [fileMode, setFileModeState] = useState(true);
   const [nativeEditMenu, setNativeEditMenu] = useState(false);
   const [selection, setSelection] = useState("");
   const activityButton = useRef<HTMLButtonElement>(null);
+  // Workspace restore semantics: opening the AI panel captures the current
+  // FILES/WORKSPACE mode and switches to WORKSPACE; closing the panel puts it
+  // back — unless the user changed the mode manually while AI was open.
+  const fileModeRef = useRef(fileMode);
+  useEffect(() => {
+    fileModeRef.current = fileMode;
+  }, [fileMode]);
+  const preAiFileMode = useRef<boolean | null>(null);
+  const fileModeTouchedByUser = useRef(false);
+  /** User-driven mode switch — cancels a pending restore-on-AI-close. */
+  const setFileMode = (next: boolean) => {
+    fileModeTouchedByUser.current = true;
+    setFileModeState(next);
+  };
+  /** Opening the AI surface: capture once, then show the workspace view. */
+  const openAiView = () => {
+    if (preAiFileMode.current === null)
+      preAiFileMode.current = fileModeRef.current;
+    setFileModeState(false);
+  };
   const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 1100px)").matches);
   useEffect(() => {
     const query = window.matchMedia("(max-width: 1100px)");
@@ -88,15 +108,24 @@ export function Desktop(props: Props) {
     fileMode && !props.zen && !activityExclusive,
   );
   useEffect(() => {
-    if (!props.terminalActive) setFileMode(false);
+    if (!props.terminalActive) setFileModeState(false);
   }, [props.terminalActive]);
   useEffect(() => {
-    if (props.aiOpen) setFileMode(false);
+    if (props.aiOpen) {
+      if (preAiFileMode.current === null)
+        preAiFileMode.current = fileModeRef.current;
+      fileModeTouchedByUser.current = false;
+      setFileModeState(false);
+    } else if (preAiFileMode.current !== null) {
+      const prev = preAiFileMode.current;
+      preAiFileMode.current = null;
+      if (!fileModeTouchedByUser.current) setFileModeState(prev);
+    }
   }, [props.aiOpen]);
   const previousTab = useRef({ id: props.activeId, ready: false });
   useEffect(() => {
     if (previousTab.current.ready && previousTab.current.id !== props.activeId)
-      setFileMode(false);
+      setFileModeState(false);
     previousTab.current = { id: props.activeId, ready: props.ready };
   }, [props.activeId, props.ready]);
   const disk = telemetry.snapshot?.disks
@@ -195,7 +224,7 @@ export function Desktop(props: Props) {
                     <button
                       type="button"
                       onClick={() => {
-                        setFileMode(false);
+                        openAiView();
                         props.onAi();
                       }}
                     >
@@ -245,7 +274,7 @@ export function Desktop(props: Props) {
                       props.onActivateSession(tabId, leafId);
                     }}
                     onOpenAi={() => {
-                      setFileMode(false);
+                      openAiView();
                       props.onActivityChange(false);
                       props.onOpenAi();
                     }}

@@ -291,6 +291,7 @@ pub(crate) fn build_oneshot_command(
     if let WorkspaceEnv::Wsl { distro } = workspace {
         validate_wsl_distro_name(distro)?;
         let mut cmd = Command::new("wsl.exe");
+        cmd.env("PATH", crate::modules::windows_env::effective_path());
         cmd.arg("-d").arg(distro);
         if let Some(cwd) = cwd.filter(|s| !s.is_empty()) {
             cmd.arg("--cd").arg(cwd);
@@ -318,6 +319,9 @@ pub(crate) fn build_oneshot_command(
     {
         let shell = crate::modules::pty::shell_init::windows_shell_path();
         let mut cmd = Command::new(&shell);
+        // Registry-merged PATH: one-shot commands must see tools installed
+        // after the app started (the process env snapshot is stale).
+        cmd.env("PATH", crate::modules::windows_env::effective_path());
         let is_cmd = shell
             .file_name()
             .and_then(|s| s.to_str())

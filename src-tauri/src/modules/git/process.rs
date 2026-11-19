@@ -314,6 +314,7 @@ fn build_git_command(
         validate_wsl_distro_name(distro)
             .map_err(|_| GitError::command("unsafe WSL distro name", distro.clone()))?;
         let mut cmd = Command::new("wsl.exe");
+        cmd.env("PATH", crate::modules::windows_env::effective_path());
         cmd.arg("-d").arg(distro);
         if let Some(cwd) = cwd.filter(|s| !s.is_empty()) {
             cmd.arg("--cd").arg(cwd);
@@ -324,6 +325,10 @@ fn build_git_command(
     }
 
     let mut cmd = Command::new("git");
+    // Registry-merged PATH: git (or its helpers) may live in a directory
+    // added to the user PATH after Tarex started.
+    #[cfg(windows)]
+    cmd.env("PATH", crate::modules::windows_env::effective_path());
     cmd.args(args);
     if let Some(dir) = cwd.filter(|s| !s.is_empty()) {
         cmd.current_dir(Path::new(dir));

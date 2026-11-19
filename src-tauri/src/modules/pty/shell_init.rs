@@ -160,7 +160,7 @@ fn apply_common(
     let appimage_overrides = workspace::appimage_env_overrides();
     let clean_path = match appimage_overrides.iter().find(|(key, _)| *key == "PATH") {
         Some((_, value)) => value.clone(),
-        None => std::env::var_os("PATH"),
+        None => Some(crate::modules::windows_env::effective_path()).filter(|path| !path.is_empty()),
     };
     for (key, value) in appimage_overrides {
         match value {
@@ -183,17 +183,22 @@ fn apply_common(
             cmd.env("TAREX_CLI", path);
             cmd.env("TERAX_CLI", path);
         }
-        if let Some(bin_dir) = &control.cli_bin_dir {
-            let paths = std::iter::once(bin_dir.clone()).chain(
-                clean_path
-                    .as_deref()
-                    .into_iter()
-                    .flat_map(std::env::split_paths),
-            );
-            if let Ok(path) = std::env::join_paths(paths) {
-                cmd.env("PATH", path);
-            }
+    }
+    // Pin PATH to the registry-merged value (effective_path on Windows) so
+    // tools added to the user PATH after Tarex started still resolve in the
+    // shell; the Tarex CLI dir keeps priority when present.
+    if let Some(bin_dir) = control.and_then(|control| control.cli_bin_dir.as_ref()) {
+        let paths = std::iter::once(bin_dir.clone()).chain(
+            clean_path
+                .as_deref()
+                .into_iter()
+                .flat_map(std::env::split_paths),
+        );
+        if let Ok(path) = std::env::join_paths(paths) {
+            cmd.env("PATH", path);
         }
+    } else if let Some(path) = &clean_path {
+        cmd.env("PATH", path);
     }
     ensure_utf8_locale(cmd);
 
@@ -1096,7 +1101,9 @@ pub fn windows_shell_path() -> PathBuf {
 
 #[cfg(windows)]
 fn which_in_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
+    // Registry-merged PATH: a shell installed after Tarex started must still
+    // resolve here even though the process PATH snapshot predates it.
+    let path = crate::modules::windows_env::effective_path();
     for dir in std::env::split_paths(&path) {
         let candidate = dir.join(name);
         if candidate.is_file() {
@@ -1160,5 +1167,26 @@ mod tests {
                 .and_then(|path| std::env::split_paths(path).next()),
             Some(std::path::PathBuf::from("/app/bin"))
         );
+    }
+
+    #[test]
+    fn common_env_pins_effective_path_without_control() {
+        let mut command = CommandBuilder::new("shell");
+        apply_common(&mut command, None, false, None);
+
+        // On non-Windows effective_path() is the process PATH; an AppImage
+        // PATH override (Linux CI) legitimately replaces it.
+        let appimage_path = crate::modules::workspace::appimage_env_overrides()
+            .iter()
+            .any(|(key, _)| *key == "PATH");
+        if appimage_path {
+            return;
+        }
+        match std::env::var_os("PATH") {
+            Some(process) if !process.is_empty() => {
+                assert_eq!(command.get_env("PATH"), Some(process.as_os_str()));
+            }
+            _ => assert_eq!(command.get_env("PATH"), None),
+        }
     }
 }

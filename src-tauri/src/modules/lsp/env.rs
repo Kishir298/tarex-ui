@@ -1,33 +1,47 @@
 //! GUI-launched apps get a bare PATH on macOS, and servers like
 //! typescript-language-server need the user's PATH themselves to find
-//! `node`. Capture the login shell env once, reuse for detect and spawn.
+//! `node`. Capture the login shell env once on Unix; on Windows refresh
+//! PATH from the registry at call time (the process env snapshot is stale).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::sync::OnceLock;
 
 #[cfg(unix)]
 const CAPTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// Empty on Windows (full user env is inherited there) or if capture failed.
-pub fn server_env_overlay() -> &'static HashMap<String, String> {
-    static ENV: OnceLock<HashMap<String, String>> = OnceLock::new();
-    ENV.get_or_init(|| {
-        #[cfg(unix)]
-        {
-            match capture_login_env() {
-                Some(env) => env,
-                None => {
-                    log::warn!("lsp: login shell env capture failed, using process env");
-                    HashMap::new()
-                }
+/// Environment overlay applied on top of the process environment when
+/// spawning language servers.
+///
+/// Unix: the captured login-shell environment (empty if capture failed).
+/// Windows: a `PATH` entry refreshed from the registry on every call, so
+/// servers installed after the app started still resolve. Other variables
+/// are inherited from the process environment as before.
+pub fn server_env_overlay() -> HashMap<String, String> {
+    #[cfg(unix)]
+    {
+        static ENV: OnceLock<HashMap<String, String>> = OnceLock::new();
+        ENV.get_or_init(|| match capture_login_env() {
+            Some(env) => env,
+            None => {
+                log::warn!("lsp: login shell env capture failed, using process env");
+                HashMap::new()
             }
-        }
-        #[cfg(windows)]
-        {
-            HashMap::new()
-        }
-    })
+        })
+        .clone()
+    }
+    #[cfg(windows)]
+    {
+        let mut overlay = HashMap::new();
+        overlay.insert(
+            "PATH".to_string(),
+            crate::modules::windows_env::effective_path()
+                .to_string_lossy()
+                .into_owned(),
+        );
+        overlay
+    }
 }
 
 pub fn resolve_binary(command: &str) -> Option<PathBuf> {

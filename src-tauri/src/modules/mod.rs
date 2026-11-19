@@ -18,4 +18,5 @@ pub mod shared_storage;
 pub mod shell;
 pub mod vibrancy;
 pub mod window_presentation;
+pub mod windows_env;
 pub mod workspace;

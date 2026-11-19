@@ -13,8 +13,8 @@ per-terminal frame loop, or per-pane GPU lifecycle.
 - Optimization: `ReleaseFast`, WebAssembly SIMD and scalar variants
 - SIMD artifact size: `696590` bytes
 - Scalar artifact size: `699601` bytes
-- SIMD SHA-256: `af4e24cf43a84355a25dcea7da084642a5fe0882093a386d383ed34f13056e04`
-- Scalar SHA-256: `3fe304ccd86044e1a114c90c2c4d30bc1db698804aa40911d4262fc59f161731`
+- SIMD SHA-256: `96cd212482664db5ec4d0c7d644d3b5611ed271643622a7ecb02e9f5c9647213`
+- Scalar SHA-256: `224dc3f929f95232bd76765c7c538f646c65142e4392b87d1b80c85aeafa8126`
 
 Tarex-specific changes include:
 

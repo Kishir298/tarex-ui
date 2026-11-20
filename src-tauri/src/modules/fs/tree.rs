@@ -6,7 +6,7 @@ use std::time::UNIX_EPOCH;
 use ignore::WalkBuilder;
 use serde::Serialize;
 
-use crate::modules::workspace::{resolve_path, WorkspaceEnv};
+use crate::modules::workspace::{ensure_authorized, resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 #[derive(Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -152,12 +152,35 @@ pub async fn fs_read_dir(
     show_hidden: bool,
     git_decorations: Option<bool>,
     workspace: Option<WorkspaceEnv>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<Vec<DirEntry>, String> {
+    // Authorized here rather than inside the blocking task: `State` borrows the
+    // app and cannot be moved into `spawn_blocking`.
+    ensure_authorized(
+        &registry,
+        &resolve_path(&path, &WorkspaceEnv::from_option(workspace.clone())),
+    )?;
     tauri::async_runtime::spawn_blocking(move || {
         read_dir_sync(path, show_hidden, git_decorations, workspace)
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+/// The `fs_read_dir` command body without the `tauri::State` wrapper, so
+/// integration tests can drive it with a plain `&WorkspaceRegistry`.
+pub fn read_dir_checked(
+    path: String,
+    show_hidden: bool,
+    git_decorations: Option<bool>,
+    workspace: Option<WorkspaceEnv>,
+    registry: &WorkspaceRegistry,
+) -> Result<Vec<DirEntry>, String> {
+    ensure_authorized(
+        registry,
+        &resolve_path(&path, &WorkspaceEnv::from_option(workspace.clone())),
+    )?;
+    read_dir_sync(path, show_hidden, git_decorations, workspace)
 }
 
 pub fn read_dir_sync(
@@ -254,9 +277,19 @@ pub fn list_subdirs(
     path: String,
     show_hidden: bool,
     workspace: Option<WorkspaceEnv>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<Vec<String>, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
-    let root = resolve_path(&path, &workspace);
+    ensure_authorized(&registry, &resolve_path(&path, &workspace))?;
+    list_subdirs_impl(path, show_hidden, &workspace)
+}
+
+pub fn list_subdirs_impl(
+    path: String,
+    show_hidden: bool,
+    workspace: &WorkspaceEnv,
+) -> Result<Vec<String>, String> {
+    let root = resolve_path(&path, workspace);
     let read = std::fs::read_dir(&root).map_err(|e| {
         log::debug!("list_subdirs({}) read_dir failed: {e}", root.display());
         e.to_string()

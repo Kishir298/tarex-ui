@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use super::to_canon;
 use super::tree::is_dev_config_file;
-use crate::modules::workspace::{resolve_path, WorkspaceEnv};
+use crate::modules::workspace::{ensure_authorized, resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 #[derive(Serialize, Clone)]
 pub struct SearchHit {
@@ -52,6 +52,19 @@ pub fn fs_search(
     limit: Option<usize>,
     workspace: Option<WorkspaceEnv>,
     show_hidden: Option<bool>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
+) -> Result<SearchResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    ensure_authorized(&registry, &resolve_path(&root, &workspace))?;
+    fs_search_impl(root, query, limit, &workspace, show_hidden)
+}
+
+pub fn fs_search_impl(
+    root: String,
+    query: String,
+    limit: Option<usize>,
+    workspace: &WorkspaceEnv,
+    show_hidden: Option<bool>,
 ) -> Result<SearchResult, String> {
     let q = query.trim();
     if q.is_empty() {
@@ -62,8 +75,7 @@ pub fn fs_search(
     }
     let cap = limit.unwrap_or(200).min(1000);
     let show_hidden = show_hidden.unwrap_or(false);
-    let workspace = WorkspaceEnv::from_option(workspace);
-    let root_path = resolve_path(&root, &workspace);
+    let root_path = resolve_path(&root, workspace);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
     }
@@ -128,7 +140,7 @@ pub fn fs_search(
             .unwrap_or_default();
         let is_dir = dent.file_type().map(|t| t.is_dir()).unwrap_or(false);
         cands.push(SearchHit {
-            path: display_path(path, &root_path, &root, &workspace),
+            path: display_path(path, &root_path, &root, workspace),
             rel,
             name,
             is_dir,
@@ -176,6 +188,19 @@ pub fn fs_list_files(
     max_depth: Option<usize>,
     workspace: Option<WorkspaceEnv>,
     show_hidden: Option<bool>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
+) -> Result<ListFilesResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    ensure_authorized(&registry, &resolve_path(&root, &workspace))?;
+    fs_list_files_impl(root, limit, max_depth, &workspace, show_hidden)
+}
+
+pub fn fs_list_files_impl(
+    root: String,
+    limit: Option<usize>,
+    max_depth: Option<usize>,
+    workspace: &WorkspaceEnv,
+    show_hidden: Option<bool>,
 ) -> Result<ListFilesResult, String> {
     const DEFAULT_LIMIT: usize = 2_000;
     const HARD_LIMIT: usize = 10_000;
@@ -185,8 +210,7 @@ pub fn fs_list_files(
     let cap = limit.unwrap_or(DEFAULT_LIMIT).clamp(1, HARD_LIMIT);
     let depth = max_depth.unwrap_or(DEFAULT_DEPTH).clamp(1, HARD_DEPTH);
     let show_hidden = show_hidden.unwrap_or(false);
-    let workspace = WorkspaceEnv::from_option(workspace);
-    let root_path = resolve_path(&root, &workspace);
+    let root_path = resolve_path(&root, workspace);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
     }

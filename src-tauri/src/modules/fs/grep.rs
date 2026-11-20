@@ -10,7 +10,7 @@ use ignore::{WalkBuilder, WalkState};
 use serde::Serialize;
 
 use super::to_canon;
-use crate::modules::workspace::{resolve_path, WorkspaceEnv};
+use crate::modules::workspace::{ensure_authorized, resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 const FILE_SIZE_CAP: u64 = 5 * 1024 * 1024;
 const DEFAULT_MAX_RESULTS: usize = 200;
@@ -177,12 +177,25 @@ pub fn fs_grep(
     case_insensitive: Option<bool>,
     max_results: Option<usize>,
     workspace: Option<WorkspaceEnv>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
+) -> Result<GrepResponse, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    ensure_authorized(&registry, &resolve_path(&root, &workspace))?;
+    fs_grep_impl(pattern, root, glob, case_insensitive, max_results, &workspace)
+}
+
+pub fn fs_grep_impl(
+    pattern: String,
+    root: String,
+    glob: Option<Vec<String>>,
+    case_insensitive: Option<bool>,
+    max_results: Option<usize>,
+    workspace: &WorkspaceEnv,
 ) -> Result<GrepResponse, String> {
     if pattern.is_empty() {
         return Err("empty pattern".into());
     }
-    let workspace = WorkspaceEnv::from_option(workspace);
-    let root_path = resolve_path(&root, &workspace);
+    let root_path = resolve_path(&root, workspace);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
     }
@@ -201,7 +214,7 @@ pub fn fs_grep(
     Ok(search_tree(
         &root_path,
         &root,
-        &workspace,
+        workspace,
         &matcher,
         &globs,
         cap,
@@ -218,6 +231,7 @@ pub fn fs_grep_interactive(
     root: String,
     max_results: Option<usize>,
     workspace: Option<WorkspaceEnv>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<GrepResponse, String> {
     if pattern.trim().is_empty() {
         return Err("empty pattern".into());
@@ -226,6 +240,7 @@ pub fn fs_grep_interactive(
 
     let workspace = WorkspaceEnv::from_option(workspace);
     let root_path = resolve_path(&root, &workspace);
+    ensure_authorized(&registry, &root_path)?;
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
     }
@@ -269,12 +284,23 @@ pub fn fs_glob(
     root: String,
     max_results: Option<usize>,
     workspace: Option<WorkspaceEnv>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
+) -> Result<GlobResponse, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    ensure_authorized(&registry, &resolve_path(&root, &workspace))?;
+    fs_glob_impl(pattern, root, max_results, &workspace)
+}
+
+pub fn fs_glob_impl(
+    pattern: String,
+    root: String,
+    max_results: Option<usize>,
+    workspace: &WorkspaceEnv,
 ) -> Result<GlobResponse, String> {
     if pattern.is_empty() {
         return Err("empty pattern".into());
     }
-    let workspace = WorkspaceEnv::from_option(workspace);
-    let root_path = resolve_path(&root, &workspace);
+    let root_path = resolve_path(&root, workspace);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
     }
@@ -314,7 +340,7 @@ pub fn fs_glob(
             continue;
         }
         hits.push(GlobHit {
-            path: display_path(path, &root_path, &root, &workspace),
+            path: display_path(path, &root_path, &root, workspace),
             rel,
         });
     }

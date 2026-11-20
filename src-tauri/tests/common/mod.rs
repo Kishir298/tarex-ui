@@ -76,6 +76,9 @@ pub fn git_available() -> bool {
 
 pub struct FsFixture {
     pub root: PathBuf,
+    /// Registry that authorizes this fixture root, for driving the guarded
+    /// fs commands directly from integration tests.
+    pub registry: WorkspaceRegistry,
     _tmp: TempDir,
 }
 
@@ -83,7 +86,13 @@ impl FsFixture {
     pub fn new() -> Self {
         let tmp = TempDir::new().expect("tempdir");
         let root = std::fs::canonicalize(tmp.path()).expect("canonicalize");
-        Self { root, _tmp: tmp }
+        let registry = WorkspaceRegistry::default();
+        registry.authorize(&root).expect("authorize fixture root");
+        Self {
+            root,
+            registry,
+            _tmp: tmp,
+        }
     }
 
     pub fn root_str(&self) -> String {

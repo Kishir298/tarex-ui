@@ -70,6 +70,61 @@ impl WorkspaceRegistry {
     }
 }
 
+/// Read/write choke point for every renderer-supplied filesystem path.
+///
+/// Canonicalizes `path` (following symlinks, so a link pointing outside the
+/// workspace resolves to its target and is rejected) and requires the result
+/// to sit under an authorized root. Paths that do not exist yet — create,
+/// write, rename and delete targets — are authorized through their nearest
+/// existing ancestor, so the parent must already be inside the workspace.
+///
+/// Returns the canonical path on success. Note this is a point-in-time check:
+/// like the rest of the registry it does not close a TOCTOU window against a
+/// concurrent symlink swap.
+pub fn ensure_authorized_path(
+    registry: &WorkspaceRegistry,
+    path: &Path,
+) -> Result<PathBuf, String> {
+    let mut current = path.to_path_buf();
+    let mut pending: Vec<std::ffi::OsString> = Vec::new();
+
+    loop {
+        let canonical = match registry.canonicalize_cached(&current) {
+            Ok(canonical) => canonical,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let Some(name) = current.file_name() else {
+                    return Err(format!("path is not accessible: {}", path.display()));
+                };
+                pending.push(name.to_os_string());
+                match current.parent() {
+                    Some(parent) if parent != current => current = parent.to_path_buf(),
+                    _ => return Err(format!("path is not accessible: {}", path.display())),
+                }
+                continue;
+            }
+            Err(error) => return Err(format!("path is not accessible: {error}")),
+        };
+
+        if !registry.is_authorized(&canonical) {
+            return Err(format!(
+                "path is outside the authorized workspace: {}",
+                path.display()
+            ));
+        }
+
+        let mut authorized = canonical;
+        for part in pending.iter().rev() {
+            authorized.push(part);
+        }
+        return Ok(authorized);
+    }
+}
+
+/// [`ensure_authorized_path`] for callers that only need a yes/no answer.
+pub fn ensure_authorized(registry: &WorkspaceRegistry, path: &Path) -> Result<(), String> {
+    ensure_authorized_path(registry, path).map(|_| ())
+}
+
 // `None` means "use bootstrapped default". `Some` is canonicalized to defeat
 // symlink/`..` traversal and must sit under an authorized root.
 pub fn authorize_spawn_cwd(
@@ -997,5 +1052,117 @@ mod appimage_tests {
 
         let outside = reader(&[("FONTCONFIG_FILE", "/etc/fonts/fonts.conf")]);
         assert!(find(&compute_appimage_env_overrides(appdir, outside), "FONTCONFIG_FILE").is_none());
+    }
+}
+
+#[cfg(test)]
+mod authorization_tests {
+    use super::*;
+
+    fn authorized_registry(root: &Path) -> WorkspaceRegistry {
+        let registry = WorkspaceRegistry::default();
+        registry.authorize(root).expect("authorize fixture root");
+        registry
+    }
+
+    #[test]
+    fn accepts_paths_inside_an_authorized_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"x").unwrap();
+        let registry = authorized_registry(dir.path());
+
+        assert!(ensure_authorized(&registry, &file).is_ok());
+    }
+
+    #[test]
+    fn rejects_paths_outside_every_authorized_root() {
+        let allowed = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("secret.txt");
+        std::fs::write(&secret, b"sssh").unwrap();
+        let registry = authorized_registry(allowed.path());
+
+        let error = ensure_authorized(&registry, &secret).unwrap_err();
+        assert!(
+            error.contains("outside the authorized workspace"),
+            "got: {error}"
+        );
+    }
+
+    #[test]
+    fn accepts_not_yet_created_targets_under_an_authorized_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = authorized_registry(dir.path());
+
+        // The file itself does not exist: authorization walks to the parent.
+        let target = dir.path().join("new/nested/file.txt");
+        assert!(ensure_authorized(&registry, &target).is_ok());
+    }
+
+    #[test]
+    fn rejects_not_yet_created_targets_outside_the_workspace() {
+        let allowed = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let registry = authorized_registry(allowed.path());
+
+        let target = outside.path().join("planted.txt");
+        let error = ensure_authorized(&registry, &target).unwrap_err();
+        assert!(
+            error.contains("outside the authorized workspace"),
+            "got: {error}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinks_that_escape_the_workspace() {
+        use std::os::unix::fs::symlink;
+        let allowed = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("secret.txt");
+        std::fs::write(&secret, b"sssh").unwrap();
+
+        let link = allowed.path().join("innocent.txt");
+        symlink(&secret, &link).unwrap();
+        let registry = authorized_registry(allowed.path());
+
+        // The link lives inside the workspace but resolves outside it.
+        let error = ensure_authorized(&registry, &link).unwrap_err();
+        assert!(
+            error.contains("outside the authorized workspace"),
+            "got: {error}"
+        );
+    }
+
+    #[test]
+    fn accepts_nested_roots_and_rejects_siblings() {
+        let parent = tempfile::tempdir().unwrap();
+        let child = parent.path().join("project");
+        std::fs::create_dir(&child).unwrap();
+        let sibling = parent.path().join("other");
+        std::fs::create_dir(&sibling).unwrap();
+
+        // Only the nested project is authorized, not its parent.
+        let registry = authorized_registry(&child);
+
+        assert!(ensure_authorized(&registry, &child.join("src/main.rs")).is_ok());
+        // Sibling under the same parent must still be rejected.
+        assert!(ensure_authorized(&registry, &sibling.join("x.txt")).is_err());
+        // The parent itself is not authorized either.
+        assert!(ensure_authorized(&registry, parent.path()).is_err());
+    }
+
+    #[test]
+    fn does_not_treat_a_prefix_sibling_as_inside_the_root() {
+        let parent = tempfile::tempdir().unwrap();
+        let root = parent.path().join("proj");
+        std::fs::create_dir(&root).unwrap();
+        // `proj-evil` shares the string prefix of `proj` but is not inside it.
+        let prefix_sibling = parent.path().join("proj-evil");
+        std::fs::create_dir(&prefix_sibling).unwrap();
+
+        let registry = authorized_registry(&root);
+        assert!(ensure_authorized(&registry, &prefix_sibling.join("f.txt")).is_err());
     }
 }

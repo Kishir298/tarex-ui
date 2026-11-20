@@ -8,7 +8,9 @@ use std::sync::{Arc, RwLock};
 
 use tauri::ipc::{Channel, Response};
 
-use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
+use crate::modules::workspace::{
+    authorize_spawn_cwd, ensure_authorized, WorkspaceEnv, WorkspaceRegistry,
+};
 use session::LspSession;
 
 pub struct LspState {
@@ -107,11 +109,17 @@ pub async fn lsp_spawn(
 }
 
 #[tauri::command]
-pub async fn lsp_resolve_root(path: String, markers: Vec<String>) -> Option<String> {
+pub async fn lsp_resolve_root(
+    path: String,
+    markers: Vec<String>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
+) -> Result<Option<String>, String> {
+    // The walk stats marker files up the chain, so the starting path must sit
+    // inside the workspace or it becomes an existence oracle for arbitrary dirs.
+    ensure_authorized(&registry, &std::path::PathBuf::from(&path))?;
     tauri::async_runtime::spawn_blocking(move || resolve_root(&path, &markers))
         .await
-        .ok()
-        .flatten()
+        .map_err(|error| error.to_string())
 }
 
 // Stops below the home directory: a stray ~/package.json must not make a

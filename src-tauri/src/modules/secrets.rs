@@ -40,8 +40,6 @@ const KEYRING_ACCOUNTS: &[&str] = &[
 use std::collections::HashMap;
 #[cfg(target_os = "linux")]
 use std::fs;
-#[cfg(target_os = "linux")]
-use std::path::PathBuf;
 
 #[derive(Default)]
 pub struct SecretsState {

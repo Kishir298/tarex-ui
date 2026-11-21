@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { ensureAiSession } from "../lib/agentSession";
 import { native } from "../lib/native";
 import { checkWritableCanonical } from "../lib/security";
 import { newQueuedEditId, usePlanStore } from "../store/planStore";
@@ -103,8 +104,10 @@ async function applyEdits(
     };
   }
 
+  const session = await ensureAiSession();
+  if (!session) return { error: "agent session unavailable", path: abs };
   try {
-    await native.writeFile(abs, content);
+    await native.aiWriteFile(abs, content, session);
     readCache.set(abs, { size: content.length, hash: djb2(content) });
     return {
       ok: true,

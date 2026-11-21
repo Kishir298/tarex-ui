@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod ai_session;
 #[cfg(target_os = "macos")]
 pub mod app_menu;
 pub mod control;

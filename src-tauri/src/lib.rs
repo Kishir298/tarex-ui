@@ -262,6 +262,7 @@ pub fn run() {
         .manage(fs::watch::FsWatchState::default())
         .manage(history::HistoryState::default())
         .manage(lsp::LspState::default())
+        .manage(modules::ai_session::AiSessionState::default())
         .manage(fs::grep::ContentSearchState::default())
         .manage({
             let registry = workspace::WorkspaceRegistry::default();
@@ -281,6 +282,12 @@ pub fn run() {
             modules::keyboard::keyboard_layout,
             modules::dialog::dialog_open_files,
             modules::dialog::dialog_save_as,
+            modules::ai_session::ai_session_create,
+            modules::ai_session::ai_session_set_plan_mode,
+            modules::ai_session::ai_session_plan_mode,
+            modules::ai_session::ai_write_file,
+            modules::ai_session::ai_create_file,
+            modules::ai_session::ai_create_dir,
             modules::process_control::suspended_processes,
             modules::process_control::control_process,
             modules::process_control::efficiency_mode_set,

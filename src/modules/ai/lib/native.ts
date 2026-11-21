@@ -154,6 +154,32 @@ export const native = {
       content,
       workspace: currentWorkspaceEnv(),
     }),
+  // Agent write surface. These require a live session token and are refused
+  // while plan mode is on — see src-tauri/src/modules/ai_session.rs. The
+  // user-facing editor keeps using writeFile above.
+  aiSessionCreate: () => invoke<string>("ai_session_create"),
+  aiSetPlanMode: (active: boolean) =>
+    invoke<boolean>("ai_session_set_plan_mode", { active }),
+  aiPlanMode: () => invoke<boolean>("ai_session_plan_mode"),
+  aiWriteFile: (path: string, content: string, session: string) =>
+    invoke<number>("ai_write_file", {
+      path,
+      content,
+      session,
+      workspace: currentWorkspaceEnv(),
+    }),
+  aiCreateFile: (path: string, session: string) =>
+    invoke<void>("ai_create_file", {
+      path,
+      session,
+      workspace: currentWorkspaceEnv(),
+    }),
+  aiCreateDir: (path: string, session: string) =>
+    invoke<void>("ai_create_dir", {
+      path,
+      session,
+      workspace: currentWorkspaceEnv(),
+    }),
   canonicalize: (path: string) =>
     invoke<string>("fs_canonicalize", {
       path,

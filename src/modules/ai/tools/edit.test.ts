@@ -5,7 +5,16 @@ import type { ToolContext } from "./context";
 const nativeMock = vi.hoisted(() => ({
   canonicalize: vi.fn(async (path: string) => path),
   readFile: vi.fn(),
+  /** The user-facing write surface. Agent tools must never reach it. */
   writeFile: vi.fn(async () => undefined),
+  aiSessionCreate: vi.fn(async () => "test-session"),
+  aiSetPlanMode: vi.fn(async (active: boolean) => active),
+  aiWriteFile: vi.fn(async () => 1),
+}));
+
+const planMock = vi.hoisted(() => ({
+  active: false,
+  enqueue: vi.fn(),
 }));
 
 vi.mock("../lib/native", () => ({ native: nativeMock }));
@@ -19,9 +28,12 @@ vi.mock("../lib/security", () => ({
 
 vi.mock("../store/planStore", () => ({
   newQueuedEditId: () => "queued-edit",
-  usePlanStore: { getState: () => ({ active: false, enqueue: vi.fn() }) },
+  usePlanStore: {
+    getState: () => ({ active: planMock.active, enqueue: planMock.enqueue }),
+  },
 }));
 
+import { resetAiSession } from "../lib/agentSession";
 import { buildEditTools } from "./edit";
 
 const toolOptions: ToolExecutionOptions = {
@@ -81,9 +93,19 @@ async function runMultiEdit(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetAiSession();
   nativeMock.canonicalize.mockImplementation(async (p: string) => p);
   nativeMock.writeFile.mockResolvedValue(undefined);
+  nativeMock.aiSessionCreate.mockResolvedValue("test-session");
+  nativeMock.aiWriteFile.mockResolvedValue(1);
+  planMock.active = false;
 });
+
+/** No path may mutate a file, through the gated or the ungated command. */
+function expectNoWrites() {
+  expect(nativeMock.aiWriteFile).not.toHaveBeenCalled();
+  expect(nativeMock.writeFile).not.toHaveBeenCalled();
+}
 
 describe("edit tool guards", () => {
   it("refuses to edit a file that was never read (read-before-edit)", async () => {
@@ -94,7 +116,7 @@ describe("edit tool guards", () => {
       new_string: "bye",
     });
     expect(result.error).toContain("read_file");
-    expect(nativeMock.writeFile).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 
   it("errors when old_string is absent", async () => {
@@ -105,7 +127,7 @@ describe("edit tool guards", () => {
       new_string: "x",
     });
     expect(result.error).toContain("not found");
-    expect(nativeMock.writeFile).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 
   it("errors when old_string is not unique and replace_all is off", async () => {
@@ -116,7 +138,7 @@ describe("edit tool guards", () => {
       new_string: "b",
     });
     expect(result.error).toContain("not unique");
-    expect(nativeMock.writeFile).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 
   it("rejects an identical old and new string", async () => {
@@ -127,7 +149,7 @@ describe("edit tool guards", () => {
       new_string: "hello",
     });
     expect(result.error).toContain("identical");
-    expect(nativeMock.writeFile).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 
   it("rejects an empty old_string", async () => {
@@ -138,7 +160,7 @@ describe("edit tool guards", () => {
       new_string: "x",
     });
     expect(result.error).toContain("empty");
-    expect(nativeMock.writeFile).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 
   it("refuses binary and oversized files", async () => {
@@ -161,7 +183,7 @@ describe("edit tool guards", () => {
       new_string: "b",
     });
     expect(large.error).toContain("too large");
-    expect(nativeMock.writeFile).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 });
 
@@ -174,7 +196,12 @@ describe("edit tool replacement", () => {
       new_string: "there",
     });
     expect(result.replacements).toBe(1);
-    expect(nativeMock.writeFile).toHaveBeenCalledWith(FILE, "hello there");
+    expect(nativeMock.aiWriteFile).toHaveBeenCalledWith(
+      FILE,
+      "hello there",
+      "test-session",
+    );
+    expect(nativeMock.writeFile).not.toHaveBeenCalled();
   });
 
   it("replaces every occurrence and counts them with replace_all", async () => {
@@ -186,7 +213,12 @@ describe("edit tool replacement", () => {
       replace_all: true,
     });
     expect(result.replacements).toBe(3);
-    expect(nativeMock.writeFile).toHaveBeenCalledWith(FILE, "z b z b z");
+    expect(nativeMock.aiWriteFile).toHaveBeenCalledWith(
+      FILE,
+      "z b z b z",
+      "test-session",
+    );
+    expect(nativeMock.writeFile).not.toHaveBeenCalled();
   });
 });
 
@@ -201,7 +233,12 @@ describe("multi_edit atomicity", () => {
       ],
     });
     expect(result.replacements).toBe(2);
-    expect(nativeMock.writeFile).toHaveBeenCalledWith(FILE, "1 2");
+    expect(nativeMock.aiWriteFile).toHaveBeenCalledWith(
+      FILE,
+      "1 2",
+      "test-session",
+    );
+    expect(nativeMock.writeFile).not.toHaveBeenCalled();
   });
 
   it("writes nothing when a later edit in the batch fails", async () => {
@@ -214,7 +251,7 @@ describe("multi_edit atomicity", () => {
       ],
     });
     expect(result.error).toContain("not found");
-    expect(nativeMock.writeFile).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 
   it("writes nothing when a later edit is non-unique", async () => {
@@ -227,6 +264,53 @@ describe("multi_edit atomicity", () => {
       ],
     });
     expect(result.error).toContain("not unique");
+    expectNoWrites();
+  });
+});
+
+describe("plan mode", () => {
+  it("queues the edit instead of writing while plan mode is on", async () => {
+    planMock.active = true;
+    setFile("hello world");
+    const result = await runEdit(readContext(), {
+      path: FILE,
+      old_string: "world",
+      new_string: "there",
+    });
+    expect(result).toMatchObject({ ok: true, path: FILE });
+    expectNoWrites();
+    expect(planMock.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "queued-edit",
+        kind: "edit",
+        path: FILE,
+        proposedContent: "hello there",
+      }),
+    );
+  });
+
+  it("never mints a session token for an edit that is only queued", async () => {
+    planMock.active = true;
+    setFile("hello");
+    await runEdit(readContext(), {
+      path: FILE,
+      old_string: "hello",
+      new_string: "x",
+    });
+    expect(nativeMock.aiSessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a refused write when Rust still holds plan mode", async () => {
+    nativeMock.aiWriteFile.mockRejectedValue(
+      "plan mode is active: the change was queued for review instead",
+    );
+    setFile("hello world");
+    const result = await runEdit(readContext(), {
+      path: FILE,
+      old_string: "world",
+      new_string: "there",
+    });
+    expect(result.error).toContain("plan mode is active");
     expect(nativeMock.writeFile).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { ensureAiSession } from "../lib/agentSession";
 import { native } from "../lib/native";
 import {
   checkReadableCanonical,
@@ -171,8 +172,10 @@ export function buildFsTools(ctx: ToolContext) {
           };
         }
 
+        const session = await ensureAiSession();
+        if (!session) return { error: "agent session unavailable", path: abs };
         try {
-          await native.writeFile(abs, content);
+          await native.aiWriteFile(abs, content, session);
           ctx.readCache.set(abs, { size: content.length, hash: djb2(content) });
           return { path: abs, bytesWritten: content.length, ok: true };
         } catch (e) {
@@ -205,8 +208,10 @@ export function buildFsTools(ctx: ToolContext) {
           });
           return { path: abs, queued_for_plan_review: true, ok: true };
         }
+        const session = await ensureAiSession();
+        if (!session) return { error: "agent session unavailable", path: abs };
         try {
-          await native.createDir(abs);
+          await native.aiCreateDir(abs, session);
           return { path: abs, ok: true };
         } catch (e) {
           return { error: String(e), path: abs };

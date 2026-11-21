@@ -34,13 +34,34 @@ export function newQueuedEditId(): string {
   return `q-${Date.now().toString(36)}-${(nextId++).toString(36)}`;
 }
 
+/**
+ * Mirrors the flag into Rust so agent writes are refused at the native
+ * boundary while plan mode is on, instead of relying on each write tool to
+ * remember its own check.
+ */
+function pushPlanMode(active: boolean): void {
+  void native.aiSetPlanMode(active).catch(() => {
+    // The renderer flag stays authoritative for the UI. Rust keeps refusing
+    // agent writes until the next successful push, which fails closed.
+  });
+}
+
 export const usePlanStore = create<PlanState>((set, get) => ({
   active: false,
   queue: [],
-  toggle: () =>
-    set((s) => ({ active: !s.active, queue: s.active ? [] : s.queue })),
-  enable: () => set({ active: true }),
-  disable: () => set({ active: false, queue: [] }),
+  toggle: () => {
+    const active = !get().active;
+    set({ active, queue: active ? get().queue : [] });
+    pushPlanMode(active);
+  },
+  enable: () => {
+    set({ active: true });
+    pushPlanMode(true);
+  },
+  disable: () => {
+    set({ active: false, queue: [] });
+    pushPlanMode(false);
+  },
   enqueue: (q) => set((s) => ({ queue: [...s.queue, q] })),
   removeOne: (id) =>
     set((s) => ({ queue: s.queue.filter((q) => q.id !== id) })),

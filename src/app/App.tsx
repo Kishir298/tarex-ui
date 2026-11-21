@@ -679,6 +679,19 @@ export default function App() {
     [handleOpenFile],
   );
 
+  // The picker runs in Rust so the chosen paths come back already granted for
+  // reading; a path the renderer invented would still be refused by the backend.
+  const openFilePicker = useCallback(async () => {
+    try {
+      const picked = await invoke<string[]>("dialog_open_files", {
+        title: "Open File",
+      });
+      if (picked.length > 0) openLaunchFiles(picked);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }, [openLaunchFiles]);
+
   // Warm start: the backend emits once the window already exists. Attach on
   // mount so an "Open With" that lands mid-restore isn't dropped — the backend
   // also seeds the drain-once state, so the boot drain below is the safety net.
@@ -1255,6 +1268,7 @@ export default function App() {
             openNewPrivate: openNewPrivateTab,
             openNewEditor: () => setNewEditorOpen(true),
             openNewPreview: () => openPreviewTab(""),
+            openFilePicker: () => void openFilePicker(),
             openGitGraph: openGitGraphFromContext,
             toggleSourceControl,
             closeActiveTabOrPane: handleCloseTabOrPane,
@@ -1287,6 +1301,7 @@ export default function App() {
       openNewBlockTab,
       openNewPrivateTab,
       openPreviewTab,
+      openFilePicker,
       openGitGraphFromContext,
       toggleSourceControl,
       handleCloseTabOrPane,

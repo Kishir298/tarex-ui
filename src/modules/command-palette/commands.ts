@@ -6,6 +6,7 @@ import {
   DashboardSquare01Icon,
   FileEditIcon,
   FileSearchIcon,
+  FolderOpenIcon,
   Globe02Icon,
   IncognitoIcon,
   KeyboardIcon,
@@ -44,6 +45,7 @@ export type CommandPaletteActionContext = {
   openNewPrivate: () => void;
   openNewEditor: () => void;
   openNewPreview: () => void;
+  openFilePicker: () => void;
   openGitGraph: () => void;
   toggleSourceControl: () => void;
   closeActiveTabOrPane: () => void;
@@ -95,6 +97,14 @@ export function createCommandItems(
       shortcutId: "view.activity" as const,
       run: ctx.toggleActivity,
     }] : []),
+    {
+      id: "file.open",
+      title: "Open file...",
+      group: "General",
+      keywords: ["open", "file", "browse", "picker", "dialog", "external"],
+      icon: FolderOpenIcon,
+      run: ctx.openFilePicker,
+    },
     {
       id: "settings.open",
       title: "Open settings",

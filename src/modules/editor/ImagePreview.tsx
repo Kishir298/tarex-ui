@@ -4,7 +4,6 @@ import { currentWorkspaceEnv } from "@/modules/workspace";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Image } from "@tauri-apps/api/image";
 import { writeImage, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { save } from "@tauri-apps/plugin-dialog";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -26,7 +25,9 @@ export function ImagePreview({path}:{path:string}) {
     try{await writeImage(native);}finally{await native.close();canvas.width=0;canvas.height=0;}
   };
   const saveCopy=async()=>{
-    const destination=await save({defaultPath:name,title:"Save Image Copy"});
+    // The dialog runs in Rust and grants the destination for writing; an
+    // arbitrary renderer-chosen path would still be refused by the backend.
+    const destination=await invoke<string|null>("dialog_save_as",{title:"Save Image Copy",file_name:name});
     if(destination)await invoke("fs_save_copy",{source:path,destination,workspace:currentWorkspaceEnv()});
   };
   return <ContextMenu><ContextMenuTrigger asChild><div className="flex size-full overflow-auto items-center justify-center" aria-label={`Image preview: ${name}`}>

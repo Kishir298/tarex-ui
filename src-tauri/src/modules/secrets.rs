@@ -23,6 +23,13 @@ use std::sync::Mutex;
 use tauri::AppHandle;
 
 const LEGACY_KEYRING_SERVICE: &str = "terax-ai";
+/// Service the frontend addresses (`KEYRING_SERVICE` in `ai/config.ts`).
+///
+/// This is a hard allowlist: `keyring::Entry::new` will happily address any
+/// service name, so without it a compromised webview could read other
+/// applications' credential entries.
+const KEYRING_SERVICE: &str = "tarex-ai";
+const ALLOWED_SERVICES: &[&str] = &[KEYRING_SERVICE];
 const KEYRING_ACCOUNTS: &[&str] = &[
     "openai-api-key",
     "anthropic-api-key",
@@ -35,6 +42,45 @@ const KEYRING_ACCOUNTS: &[&str] = &[
     "openrouter-api-key",
     "openai-compatible-api-key",
 ];
+
+/// Rejects renderer-supplied credential addresses before they reach the
+/// platform keyring.
+///
+/// The service is a closed list. Accounts are the fixed provider set plus the
+/// `compat-<endpoint-id>-api-key` shape used for custom OpenAI-compatible
+/// endpoints, bounded so a crafted id cannot smuggle the `::` key separator
+/// the Linux store uses or grow without limit.
+fn validate_credentials(service: &str, account: &str) -> Result<(), String> {
+    validate_service(service)?;
+    if !account_allowed(account) {
+        return Err(format!("secrets account is not allowed: {account}"));
+    }
+    Ok(())
+}
+
+fn validate_service(service: &str) -> Result<(), String> {
+    if !ALLOWED_SERVICES.contains(&service) {
+        return Err(format!("secrets service is not allowed: {service}"));
+    }
+    Ok(())
+}
+
+fn account_allowed(account: &str) -> bool {
+    if KEYRING_ACCOUNTS.contains(&account) {
+        return true;
+    }
+    let Some(rest) = account.strip_prefix("compat-") else {
+        return false;
+    };
+    let Some(id) = rest.strip_suffix("-api-key") else {
+        return false;
+    };
+    !id.is_empty()
+        && id.len() <= 64
+        && !id
+            .chars()
+            .any(|c| c == ':' || c == '/' || c == '\\' || c.is_control())
+}
 
 #[cfg(target_os = "linux")]
 use std::collections::HashMap;
@@ -264,6 +310,7 @@ pub async fn secrets_get(
     service: String,
     account: String,
 ) -> Result<Option<String>, String> {
+    validate_credentials(&service, &account)?;
     #[cfg(target_os = "linux")]
     {
         let _ = state; // capture
@@ -290,6 +337,7 @@ pub async fn secrets_set(
     account: String,
     password: String,
 ) -> Result<(), String> {
+    validate_credentials(&service, &account)?;
     #[cfg(target_os = "linux")]
     {
         let key = key(&service, &account);
@@ -317,6 +365,7 @@ pub async fn secrets_delete(
     service: String,
     account: String,
 ) -> Result<(), String> {
+    validate_credentials(&service, &account)?;
     #[cfg(target_os = "linux")]
     {
         let key = key(&service, &account);
@@ -428,6 +477,10 @@ pub async fn secrets_get_all(
     service: String,
     accounts: Vec<String>,
 ) -> Result<Vec<Option<String>>, String> {
+    validate_service(&service)?;
+    for account in &accounts {
+        validate_credentials(&service, account)?;
+    }
     #[cfg(target_os = "linux")]
     {
         with_store(&app, &state, |m| {
@@ -448,5 +501,69 @@ pub async fn secrets_get_all(
                     .and_then(|e| e.get_password().ok())
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod credential_allowlist_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_every_fixed_provider_account() {
+        for account in KEYRING_ACCOUNTS {
+            validate_credentials(KEYRING_SERVICE, account)
+                .unwrap_or_else(|e| panic!("{account} must be allowed: {e}"));
+        }
+    }
+
+    #[test]
+    fn accepts_custom_endpoint_accounts() {
+        for id in ["a1b2c3d4", "my-endpoint_1", "x.y"] {
+            let account = format!("compat-{id}-api-key");
+            validate_credentials(KEYRING_SERVICE, &account)
+                .unwrap_or_else(|e| panic!("{account} must be allowed: {e}"));
+        }
+    }
+
+    #[test]
+    fn rejects_other_services() {
+        for service in ["terax-ai", "com.apple.safari", "", "tarex-ai "] {
+            let error = validate_credentials(service, "openai-api-key").unwrap_err();
+            assert!(error.contains("service is not allowed"), "got: {error}");
+        }
+    }
+
+    #[test]
+    fn rejects_accounts_outside_the_allowlist() {
+        for account in ["", "openai", "admin", "compat-api-key", "compat--api-key"] {
+            let error = validate_credentials(KEYRING_SERVICE, account).unwrap_err();
+            assert!(
+                error.contains("account is not allowed"),
+                "{account:?} must be refused, got: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_accounts_that_could_inject_the_key_separator() {
+        for account in [
+            "compat-a::b-api-key",
+            "compat-a/b-api-key",
+            "compat-a\\b-api-key",
+            "compat-a\u{7}-api-key",
+        ] {
+            let error = validate_credentials(KEYRING_SERVICE, account).unwrap_err();
+            assert!(
+                error.contains("account is not allowed"),
+                "{account:?} must be refused, got: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_overlong_compat_ids() {
+        let account = format!("compat-{}-api-key", "a".repeat(65));
+        let error = validate_credentials(KEYRING_SERVICE, &account).unwrap_err();
+        assert!(error.contains("account is not allowed"), "got: {error}");
     }
 }

@@ -55,6 +55,14 @@ const PROTECTED_DIRS: &[&str] = &[
     "/appdata/roaming/gcloud",
 ];
 
+/// Files only Rust may write. They decide what the app will execute or which
+/// credentials it holds, and the app data directory normally sits inside an
+/// authorized home root — so a renderer `fs_write_file` must not reach them.
+const RUST_OWNED_BASENAMES: &[&str] = &[
+    "lsp-allowed-servers.json",
+    "secrets.json",
+];
+
 /// Write-only deny prefixes (system locations). Read access is *not*
 /// universally blocked — reading `/etc/hosts` is fine; writing to it isn't.
 const WRITE_DENY_PREFIXES: &[&str] = &[
@@ -224,6 +232,12 @@ pub fn writable_violation(path: &Path) -> Option<String> {
         return Some(reason);
     }
     let comparison = comparison_form(&path.to_string_lossy());
+    let base = basename(&comparison);
+    if RUST_OWNED_BASENAMES.contains(&base) {
+        return Some(format!(
+            "Refused: \"{base}\" is managed by Tarex and cannot be written from the workspace."
+        ));
+    }
     for prefix in WRITE_DENY_PREFIXES {
         // Prefix match, plus the directory itself: `/usr/bin` does not start
         // with `/usr/bin/`, but appending the separator makes it match.
@@ -327,6 +341,21 @@ mod tests {
         // Already refused for reads, so also refused for writes.
         assert!(read("/etc/hosts").is_some());
         assert!(write("/etc/hosts").is_some());
+    }
+
+    #[test]
+    fn rust_owned_files_are_write_protected() {
+        // The app data dir normally lives under an authorized home root, so
+        // these need an explicit rule rather than the workspace check.
+        for p in [
+            "/Users/dev/Library/Application Support/tarex/lsp-allowed-servers.json",
+            "/home/dev/.local/share/tarex/lsp-allowed-servers.json",
+            "/home/dev/.local/share/tarex/secrets.json",
+        ] {
+            assert!(write(p).is_some(), "expected refusal for {p}");
+        }
+        // A same-named file inside a project is still the project's file.
+        assert!(write("/Users/dev/proj/lsp-allowed-servers.json.bak").is_none());
     }
 
     #[test]

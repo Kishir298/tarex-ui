@@ -1,5 +1,6 @@
 mod env;
 mod framing;
+mod policy;
 mod session;
 
 use std::collections::HashMap;
@@ -48,6 +49,9 @@ pub fn lsp_host_pid() -> u32 {
 
 #[tauri::command]
 pub async fn lsp_detect(command: String) -> Option<String> {
+    if policy::validate_command(&command).is_err() {
+        return None;
+    }
     tauri::async_runtime::spawn_blocking(move || {
         env::resolve_binary(&command).map(|p| p.to_string_lossy().into_owned())
     })
@@ -75,8 +79,14 @@ pub async fn lsp_spawn(
     if workspace.is_wsl() {
         return Err("lsp: WSL workspaces are not supported yet".into());
     }
+    // Shape and environment checks run first so a malformed request never
+    // reaches the confirmation dialog.
+    policy::validate_request(&command, &args, env.as_ref())?;
     let root = authorize_spawn_cwd(&registry, Some(root.as_str()), &workspace)?
         .ok_or("lsp: workspace root is required")?;
+    // Shipped presets pass silently; anything else is confirmed once in a
+    // native dialog and then remembered by Rust.
+    policy::authorize(&app, &command, &args).await?;
 
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);
     let spawn_log = format!("cmd={command} root={}", root.display());

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -56,6 +56,14 @@ fn ip_kind(ip: IpAddr) -> IpKind {
             if v.is_loopback() || v.is_unspecified() || v.is_multicast() {
                 return IpKind::Loopback;
             }
+            // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d)
+            // carry an IPv4 address in their low 32 bits. Classified as plain
+            // IPv6 they read as public, which would let
+            // [::ffff:127.0.0.1] and [::ffff:169.254.169.254] past every
+            // IPv4 rule below.
+            if let Some(embedded) = embedded_ipv4(v) {
+                return ip_kind(IpAddr::V4(embedded));
+            }
             // Cloud metadata IPv6 (AWS): fd00:ec2::254
             let segs = v.segments();
             if segs[0] == 0xfd00 && segs[1] == 0xec2 {
@@ -72,6 +80,30 @@ fn ip_kind(ip: IpAddr) -> IpKind {
             IpKind::Public
         }
     }
+}
+
+/// The IPv4 address wrapped by an IPv4-mapped (`::ffff:a.b.c.d`) or
+/// IPv4-compatible (`::a.b.c.d`) IPv6 address. `::` and `::1` are the
+/// unspecified and loopback addresses rather than wrapped hosts and are
+/// excluded so they keep their own classification even if a caller reorders
+/// the checks above.
+fn embedded_ipv4(v: Ipv6Addr) -> Option<Ipv4Addr> {
+    if let Some(mapped) = v.to_ipv4_mapped() {
+        return Some(mapped);
+    }
+    let s = v.segments();
+    if !s[..6].iter().all(|&seg| seg == 0) {
+        return None;
+    }
+    if s[6] == 0 && s[7] <= 1 {
+        return None;
+    }
+    Some(Ipv4Addr::new(
+        (s[6] >> 8) as u8,
+        s[6] as u8,
+        (s[7] >> 8) as u8,
+        s[7] as u8,
+    ))
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -242,10 +274,7 @@ fn build_request(
     Ok(req)
 }
 
-fn build_safe_client(
-    allow_private: bool,
-    pinned: &[(String, Vec<IpAddr>)],
-) -> Result<reqwest::Client, String> {
+fn build_safe_client(pinned: &[(String, Vec<IpAddr>)]) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10));
     // Pin reqwest's resolver to the IPs we just classified. Without this,
@@ -259,44 +288,136 @@ fn build_safe_client(
             builder = builder.resolve_to_addrs(host, &addrs);
         }
     }
+    // Redirects are followed by `send_checked`, not here: reqwest's hook runs
+    // synchronously, so it cannot resolve and classify a hostname it has
+    // never seen — which is exactly how a redirect reaches a metadata
+    // endpoint.
     builder
-        .redirect(reqwest::redirect::Policy::custom(move |attempt| {
-            if attempt.previous().len() > 10 {
-                return attempt.error("too many redirects");
-            }
-            let next = attempt.url();
-            match next.scheme() {
-                "http" | "https" => {}
-                _ => return attempt.stop(),
-            }
-            if next.username() != "" || next.password().is_some() {
-                return attempt.stop();
-            }
-            let Some(host) = next.host_str() else {
-                return attempt.stop();
-            };
-            if is_blocked_host_name(host) {
-                return attempt.stop();
-            }
-            if let Ok(ip) = host.parse::<IpAddr>() {
-                let k = ip_kind(ip);
-                if k == IpKind::BlockedMetadata {
-                    return attempt.stop();
-                }
-                if !allow_private && matches!(k, IpKind::Loopback | IpKind::Private) {
-                    return attempt.stop();
-                }
-            } else if !allow_private {
-                if let Some(prev) = attempt.previous().last() {
-                    if prev.host_str() != Some(host) {
-                        return attempt.stop();
-                    }
-                }
-            }
-            attempt.follow()
-        }))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())
+}
+
+const MAX_REDIRECTS: u8 = 10;
+
+/// Statuses that carry a `Location` we are willing to follow.
+const FOLLOWABLE_REDIRECTS: &[u16] = &[301, 302, 303, 307, 308];
+
+/// Credentials must not be replayed to a different origin.
+const CROSS_ORIGIN_STRIP: &[&str] = &["authorization", "cookie", "proxy-authorization"];
+
+/// Describes a body that a 301/302/303 conversion to GET throws away.
+const BODY_HEADERS: &[&str] = &[
+    "content-type",
+    "content-length",
+    "content-encoding",
+    "transfer-encoding",
+];
+
+fn is_cross_origin(from: &reqwest::Url, to: &reqwest::Url) -> bool {
+    from.scheme() != to.scheme()
+        || from.host_str() != to.host_str()
+        || from.port_or_known_default() != to.port_or_known_default()
+}
+
+fn drop_headers(headers: &mut Option<HashMap<String, String>>, list: &[&str]) {
+    if let Some(map) = headers.as_mut() {
+        map.retain(|k, _| !list.iter().any(|l| k.eq_ignore_ascii_case(l)));
+    }
+}
+
+/// Rewrite method, body and headers for one redirect hop. Mirrors reqwest's
+/// own rules so behaviour does not change, but runs against URLs the caller
+/// has already validated and classified.
+fn redirect_follow(
+    status: u16,
+    method: &str,
+    body: Option<Vec<u8>>,
+    mut headers: Option<HashMap<String, String>>,
+    from: &reqwest::Url,
+    to: &reqwest::Url,
+) -> (String, Option<Vec<u8>>, Option<HashMap<String, String>>) {
+    let mut method = method.to_string();
+    let mut body = body;
+    if matches!(status, 301..=303) && method != "GET" && method != "HEAD" {
+        method = "GET".into();
+        body = None;
+    }
+    if body.is_none() {
+        drop_headers(&mut headers, BODY_HEADERS);
+    }
+    if is_cross_origin(from, to) {
+        drop_headers(&mut headers, CROSS_ORIGIN_STRIP);
+    }
+    (method, body, headers)
+}
+
+/// Issue `method`/`url` and follow redirects by hand.
+///
+/// Every hop — the first included — goes through URL validation, DNS
+/// resolution, IP classification and resolver pinning, so a redirect cannot
+/// reach an address the original request would have been refused for. Returns
+/// the client that owns the connection; the caller must keep it alive for as
+/// long as it reads the response body.
+async fn send_checked(
+    method: &str,
+    url: reqwest::Url,
+    headers: Option<HashMap<String, String>>,
+    body: Option<Vec<u8>>,
+    allow_private: bool,
+) -> Result<(reqwest::Client, reqwest::Response), String> {
+    let mut current_url = url;
+    let mut current_method = method.to_string();
+    let mut current_headers = headers;
+    let mut current_body = body;
+
+    for _ in 0..=MAX_REDIRECTS {
+        let host = current_url
+            .host_str()
+            .ok_or_else(|| "missing host".to_string())?
+            .to_string();
+        let safe_ips = classify_and_collect_safe_ips(&host, allow_private).await?;
+        let client = build_safe_client(&[(host, safe_ips)])?;
+        let req = build_request(
+            &client,
+            &current_method,
+            current_url.clone(),
+            current_headers.clone(),
+            current_body.clone(),
+        )?;
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+
+        let status = resp.status().as_u16();
+        if !FOLLOWABLE_REDIRECTS.contains(&status) {
+            return Ok((client, resp));
+        }
+        let Some(location) = resp.headers().get(reqwest::header::LOCATION) else {
+            return Ok((client, resp));
+        };
+        let location = location
+            .to_str()
+            .map_err(|_| "invalid redirect location".to_string())?;
+        let next = current_url
+            .join(location)
+            .map_err(|e| format!("invalid redirect location: {e}"))?;
+        // The redirect target obeys the same rules as the original URL:
+        // scheme, no userinfo, no metadata hostname.
+        validate_url(next.as_str(), allow_private)?;
+
+        let (method, body, headers) = redirect_follow(
+            status,
+            &current_method,
+            current_body.clone(),
+            current_headers.clone(),
+            &current_url,
+            &next,
+        );
+        current_method = method;
+        current_body = body;
+        current_headers = headers;
+        current_url = next;
+    }
+    Err("too many redirects".into())
 }
 
 fn header_map_to_strings(headers: &HeaderMap) -> HashMap<String, String> {
@@ -319,16 +440,12 @@ pub async fn ai_http_request(
 ) -> Result<HttpResponse, String> {
     let allow_private = allow_private_network.unwrap_or(false);
     let parsed = validate_url(&url, allow_private)?;
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| "missing host".to_string())?
-        .to_string();
-    let safe_ips = classify_and_collect_safe_ips(&host, allow_private).await?;
 
-    let client = build_safe_client(allow_private, &[(host, safe_ips)])?;
-
-    let req = build_request(&client, &method, parsed, headers, body)?;
-    let resp = req.send().await.map_err(|e| e.to_string())?;
+    // One code path for both commands so a redirect can never be validated
+    // differently depending on which one called it.
+    let (client, resp) = send_checked(&method, parsed, headers, body, allow_private).await?;
+    // Keep the connection pool alive while the body is read.
+    let _client = client;
 
     let status = resp.status().as_u16();
     let headers = header_map_to_strings(resp.headers());
@@ -373,34 +490,17 @@ pub async fn ai_http_stream(
             return Err(e);
         }
     };
-    let host = match parsed.host_str() {
-        Some(h) => h.to_string(),
-        None => {
-            let e = "missing host".to_string();
-            let _ = on_event.send(AiStreamEvent::Error { message: e.clone() });
-            return Err(e);
-        }
-    };
-    let safe_ips = match classify_and_collect_safe_ips(&host, allow_private).await {
+    // One code path for both commands so a redirect can never be validated
+    // differently depending on which one called it.
+    let (client, resp) = match send_checked(&method, parsed, headers, body, allow_private).await {
         Ok(v) => v,
         Err(e) => {
             let _ = on_event.send(AiStreamEvent::Error { message: e.clone() });
             return Err(e);
         }
     };
-
-    let client = build_safe_client(allow_private, &[(host, safe_ips)])?;
-
-    let req = build_request(&client, &method, parsed, headers, body)?;
-    let resp = match req.send().await {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = on_event.send(AiStreamEvent::Error {
-                message: e.to_string(),
-            });
-            return Err(e.to_string());
-        }
-    };
+    // Held for as long as the response body streams.
+    let _client = client;
 
     let status = resp.status().as_u16();
     let headers = header_map_to_strings(resp.headers());
@@ -617,5 +717,159 @@ mod tests {
     fn validate_url_requires_a_host() {
         // A URL that parses but carries no host must not slip through.
         assert!(validate_url("http://", true).is_err());
+    }
+
+    #[test]
+    fn ipv4_mapped_and_compatible_addresses_use_ipv4_rules() {
+        // Without unwrapping, these read as plain IPv6 and classify as public,
+        // which is how [::ffff:127.0.0.1] and [::ffff:169.254.169.254] used to
+        // slip past every IPv4 rule.
+        assert_eq!(
+            ip_kind("::ffff:127.0.0.1".parse().unwrap()),
+            IpKind::Loopback
+        );
+        assert_eq!(
+            ip_kind("::ffff:169.254.169.254".parse().unwrap()),
+            IpKind::BlockedMetadata
+        );
+        assert_eq!(
+            ip_kind("::ffff:10.0.0.1".parse().unwrap()),
+            IpKind::Private
+        );
+        assert_eq!(
+            ip_kind("::ffff:192.168.1.1".parse().unwrap()),
+            IpKind::Private
+        );
+        assert_eq!(ip_kind("::ffff:8.8.8.8".parse().unwrap()), IpKind::Public);
+        // Deprecated IPv4-compatible form (::a.b.c.d).
+        assert_eq!(
+            ip_kind("::10.0.0.1".parse().unwrap()),
+            IpKind::Private
+        );
+        assert_eq!(
+            ip_kind("::127.0.0.1".parse().unwrap()),
+            IpKind::Loopback
+        );
+        // The bare IPv6 addresses keep their own meaning.
+        assert_eq!(ip_kind("::1".parse().unwrap()), IpKind::Loopback);
+        assert_eq!(ip_kind("::".parse().unwrap()), IpKind::Loopback);
+        assert_eq!(
+            ip_kind("fd00:ec2::254".parse().unwrap()),
+            IpKind::BlockedMetadata
+        );
+    }
+
+    #[test]
+    fn embedded_ipv4_only_unwraps_the_wrapped_forms() {
+        assert_eq!(
+            embedded_ipv4("::ffff:127.0.0.1".parse().unwrap()),
+            Some(Ipv4Addr::new(127, 0, 0, 1))
+        );
+        assert_eq!(
+            embedded_ipv4("::10.0.0.1".parse().unwrap()),
+            Some(Ipv4Addr::new(10, 0, 0, 1))
+        );
+        assert_eq!(embedded_ipv4("::1".parse().unwrap()), None);
+        assert_eq!(embedded_ipv4("::".parse().unwrap()), None);
+        assert_eq!(embedded_ipv4("fd00:ec2::254".parse().unwrap()), None);
+        assert_eq!(embedded_ipv4("2606:4700::1111".parse().unwrap()), None);
+    }
+
+    fn url(s: &str) -> reqwest::Url {
+        reqwest::Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn redirect_302_turns_a_body_carrying_method_into_get() {
+        let headers = HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]);
+        let (m, b, h) = redirect_follow(
+            302,
+            "POST",
+            Some(b"x".to_vec()),
+            Some(headers),
+            &url("http://a.example/x"),
+            &url("http://a.example/y"),
+        );
+        assert_eq!(m, "GET");
+        assert!(b.is_none(), "the body must not follow a converted GET");
+        assert!(
+            h.unwrap().is_empty(),
+            "body headers must not survive the conversion"
+        );
+    }
+
+    #[test]
+    fn redirect_307_preserves_method_body_and_headers() {
+        let headers = HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]);
+        let (m, b, h) = redirect_follow(
+            307,
+            "POST",
+            Some(b"x".to_vec()),
+            Some(headers),
+            &url("http://a.example/x"),
+            &url("http://a.example/y"),
+        );
+        assert_eq!(m, "POST");
+        assert_eq!(b.as_deref(), Some(b"x".as_ref()));
+        assert!(h.unwrap().contains_key("Content-Type"));
+    }
+
+    #[test]
+    fn redirect_strips_credentials_only_across_origins() {
+        let headers = || {
+            HashMap::from([
+                ("Authorization".to_string(), "Bearer t".to_string()),
+                ("X-Keep".to_string(), "1".to_string()),
+            ])
+        };
+
+        let (.., same) = redirect_follow(
+            302,
+            "GET",
+            None,
+            Some(headers()),
+            &url("http://a.example/x"),
+            &url("http://a.example/y"),
+        );
+        assert_eq!(
+            same.unwrap().get("Authorization").map(String::as_str),
+            Some("Bearer t"),
+            "same-origin redirects keep the credential"
+        );
+
+        let (.., cross) = redirect_follow(
+            302,
+            "GET",
+            None,
+            Some(headers()),
+            &url("http://a.example/x"),
+            &url("https://b.example/y"),
+        );
+        let cross = cross.unwrap();
+        assert!(
+            !cross.contains_key("Authorization"),
+            "a cross-origin redirect must not replay the credential"
+        );
+        assert_eq!(cross.get("X-Keep").map(String::as_str), Some("1"));
+
+        let (.., port) = redirect_follow(
+            302,
+            "GET",
+            None,
+            Some(headers()),
+            &url("http://a.example:80/x"),
+            &url("http://a.example:8080/y"),
+        );
+        assert!(!port.unwrap().contains_key("Authorization"));
+    }
+
+    #[test]
+    fn redirect_target_must_still_pass_url_rules() {
+        // A redirect is only followed after the same validation the first URL
+        // gets — a Location header must not smuggle userinfo or a metadata
+        // hostname past the initial check.
+        assert!(validate_url("http://user:pass@evil.example/", false).is_err());
+        assert!(validate_url("http://metadata.google.internal/", false).is_err());
+        assert!(validate_url("http://169.254.169.254/", false).is_ok());
     }
 }

@@ -137,8 +137,8 @@ this is a workflow-design artifact, not a defect.
 | 1 | Duplicate `use std::path::PathBuf;` at file scope (`#[cfg(target_os = "linux")]` copy shadowed by unconditional import) | `src-tauri/src/modules/secrets.rs:20,44` | source code | **fixed** (duplicate removed) |
 | 2 | `BOOL` moved out of `windows_sys::Win32::Foundation` in windows-sys 0.61 → must be `windows_sys::core::BOOL` | `src-tauri/src/modules/process_control.rs:199` | dependency upgrade drift | **fixed** (import corrected) |
 | 3 | No Tarex updater signing keypair exists; `TAURI_SIGNING_PRIVATE_KEY` repository secret is empty, and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is hardcoded `""` in the workflow | `release.yml`, repo secrets, `tauri.conf.json` pubkey | configuration / secrets | **fixed** — Tarex-owned keypair generated; `tauri.conf.json` pubkey replaced; `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set as repository secrets; both `release.yml` password bindings now read the secret. Signature round-trip verified locally (Ed25519 over Blake2b-512 verifies against the committed pubkey). |
-| 4 | Release workflow triggers on every push to `main`, so a broken commit immediately starts a doomed release | `.github/workflows/release.yml` | workflow design | pending (Phase 7) |
-| 5 | CI workflow has no rustfmt gate, no top-level `permissions`, no step timeouts | `.github/workflows/ci.yml` | workflow design | pending (Phase 8) |
+| 4 | Release workflow triggers on every push to `main`, so a broken commit immediately starts a doomed release | `.github/workflows/release.yml` | workflow design | **fixed** — release now runs on `workflow_dispatch` only; every push to `main` is covered by CI and no longer starts a build. |
+| 5 | CI workflow has no rustfmt gate, no top-level `permissions`, no step timeouts | `.github/workflows/ci.yml` | workflow design | **fixed** — added a `cargo fmt --all --check` job, top-level `permissions: contents: read`, and `timeout-minutes` on every job (after a repo-wide `cargo fmt`). |
 | 6 | Windows runner transient `install-action` bash startup failure | GitHub runner infra | runner environment | not actionable; re-run if it recurs |
 
 ## Cascading effects
@@ -147,8 +147,12 @@ this is a workflow-design artifact, not a defect.
   reported on this fork.
 - macOS CI jobs (`rust-test (macos-latest)`, `terminal-test (macos-latest)`)
   were cancelled, so **no CI signal exists for macOS at all** on this fork.
-- Because the Release workflow runs on every `main` push, each broken push
-  produces two failing runs (CI + Release), doubling noise.
+- Because the Release workflow ran on every `main` push, each broken push
+  produced two failing runs (CI + Release), doubling noise. Since the
+  remediation above, releases are manual, so only CI runs on a push.
+
+_These were the effects observed at audit time; the per-job outcomes above
+are historical. Current status is tracked by the CI runs on this branch._
 
 ## Verification
 

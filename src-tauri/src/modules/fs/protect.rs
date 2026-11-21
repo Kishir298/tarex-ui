@@ -58,10 +58,7 @@ const PROTECTED_DIRS: &[&str] = &[
 /// Files only Rust may write. They decide what the app will execute or which
 /// credentials it holds, and the app data directory normally sits inside an
 /// authorized home root — so a renderer `fs_write_file` must not reach them.
-const RUST_OWNED_BASENAMES: &[&str] = &[
-    "lsp-allowed-servers.json",
-    "secrets.json",
-];
+const RUST_OWNED_BASENAMES: &[&str] = &["lsp-allowed-servers.json", "secrets.json"];
 
 /// Write-only deny prefixes (system locations). Read access is *not*
 /// universally blocked — reading `/etc/hosts` is fine; writing to it isn't.
@@ -139,8 +136,7 @@ fn comparison_form(path: &str) -> String {
     }
     // Drive prefix `C:/foo` -> `/foo`. Before lowercasing so `C:`/`c:` are
     // handled by the same rule.
-    if s.len() >= 2 && s.as_bytes()[1] == b':' && s[..1].chars().all(|c| c.is_ascii_alphabetic())
-    {
+    if s.len() >= 2 && s.as_bytes()[1] == b':' && s[..1].chars().all(|c| c.is_ascii_alphabetic()) {
         s = s[2..].to_owned();
     }
     if !s.starts_with('/') {
@@ -370,8 +366,14 @@ mod tests {
 
     #[test]
     fn comparison_form_is_stable() {
-        assert_eq!(comparison_form(r"\\?\C:\Users\Dev\.SSH\"), "/users/dev/.ssh");
-        assert_eq!(comparison_form("/Users/dev/proj//src/"), "/users/dev/proj/src");
+        assert_eq!(
+            comparison_form(r"\\?\C:\Users\Dev\.SSH\"),
+            "/users/dev/.ssh"
+        );
+        assert_eq!(
+            comparison_form("/Users/dev/proj//src/"),
+            "/users/dev/proj/src"
+        );
         assert_eq!(comparison_form("/Users/dev/.env."), "/users/dev/.env");
         assert_eq!(
             comparison_form(&PathBuf::from("/a/b").to_string_lossy()),

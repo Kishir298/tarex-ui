@@ -131,10 +131,12 @@ pub async fn dashboard_snapshot(
 ) -> Result<Snapshot, String> {
     let monitor = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        monitor
-            .lock()
-            .map_err(|e| e.to_string())
-            .map(|mut m| {if force_details.unwrap_or(false){m.details_sampled=None;}m.snapshot()})
+        monitor.lock().map_err(|e| e.to_string()).map(|mut m| {
+            if force_details.unwrap_or(false) {
+                m.details_sampled = None;
+            }
+            m.snapshot()
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -160,5 +162,4 @@ mod tests {
             .iter()
             .all(|c| c.is_finite() && (0.0..=100.0).contains(c)));
     }
-
 }

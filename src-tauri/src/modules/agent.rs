@@ -201,7 +201,10 @@ fn merge_hooks(mut root: Value, spec: &AgentSpec) -> Value {
 fn existing_config(contents: Option<&str>, path: &std::path::Path) -> Result<Value, String> {
     match contents {
         Some(s) if !s.trim().is_empty() => serde_json::from_str::<Value>(s).map_err(|e| {
-            format!("{} is not valid JSON ({e}); refusing to overwrite", path.display())
+            format!(
+                "{} is not valid JSON ({e}); refusing to overwrite",
+                path.display()
+            )
         }),
         _ => Ok(json!({})),
     }
@@ -308,8 +311,7 @@ pub fn emit_conout_marker(agent: &str, event: &str) {
     use std::io::Write;
     use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
 
-    if std::env::var_os("TAREX_TERMINAL").is_none()
-        && std::env::var_os("TERAX_TERMINAL").is_none()
+    if std::env::var_os("TAREX_TERMINAL").is_none() && std::env::var_os("TERAX_TERMINAL").is_none()
     {
         return;
     }

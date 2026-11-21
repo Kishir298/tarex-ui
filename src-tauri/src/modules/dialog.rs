@@ -94,11 +94,9 @@ pub async fn dialog_save_as(
 /// code execution with the user's privileges.
 const EXECUTABLE_EXTENSIONS: &[&str] = &[
     // macOS
-    "app", "appex", "command", "tool", "pkg", "dmg", "dylib", "workflow",
-    // Windows
-    "exe", "bat", "cmd", "com", "msi", "msp", "msix", "scr", "pif", "vbs",
-    "vbe", "wsf", "hta", "ps1", "psm1", "lnk", "reg", "jar", "msc", "cpl",
-    // Linux
+    "app", "appex", "command", "tool", "pkg", "dmg", "dylib", "workflow", // Windows
+    "exe", "bat", "cmd", "com", "msi", "msp", "msix", "scr", "pif", "vbs", "vbe", "wsf", "hta",
+    "ps1", "psm1", "lnk", "reg", "jar", "msc", "cpl", // Linux
     "bin", "run", "deb", "rpm", "appimage", "sh", "bash", "zsh", "desktop",
 ];
 

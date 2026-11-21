@@ -173,7 +173,11 @@ mod tests {
     fn issue_is_stable_for_the_life_of_the_state() {
         let state = AiSessionState::default();
         let first = state.issue();
-        assert_eq!(state.issue(), first, "a second create must not invalidate the first token");
+        assert_eq!(
+            state.issue(),
+            first,
+            "a second create must not invalidate the first token"
+        );
         assert!(ensure_writable(&state, &first).is_ok());
     }
 

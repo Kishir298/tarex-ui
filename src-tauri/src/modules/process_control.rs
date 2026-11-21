@@ -196,8 +196,8 @@ fn signal(pid: u32, action: &Action) -> Result<(), String> {
 /// instead of a silent force kill.
 #[cfg(windows)]
 fn close_main_window(pid: u32) -> Result<(), String> {
-    use windows_sys::Win32::Foundation::{HWND, LPARAM};
     use windows_sys::core::BOOL;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
     };

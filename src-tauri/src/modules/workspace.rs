@@ -57,26 +57,48 @@ impl WorkspaceRegistry {
     /// Installs the hook that mirrors authorizations into the asset protocol
     /// scope. Call once, during app setup, before any path is authorized.
     pub fn set_asset_grant(&self, grant: impl Fn(&Path) + Send + Sync + 'static) {
-        *self.asset_grant.write().expect("workspace registry poisoned") =
-            Some(Arc::new(grant));
+        *self
+            .asset_grant
+            .write()
+            .expect("workspace registry poisoned") = Some(Arc::new(grant));
     }
 
     /// Replays everything authorized before the hook was installed (the
     /// bootstrap roots and launch directory run while the builder is still
     /// being constructed, ahead of `setup`).
     pub fn replay_asset_grants(&self) {
-        let hook = self.asset_grant.read().expect("workspace registry poisoned").clone();
-        let Some(hook) = hook else { return; };
-        for root in self.roots.lock().expect("workspace registry poisoned").iter() {
+        let hook = self
+            .asset_grant
+            .read()
+            .expect("workspace registry poisoned")
+            .clone();
+        let Some(hook) = hook else {
+            return;
+        };
+        for root in self
+            .roots
+            .lock()
+            .expect("workspace registry poisoned")
+            .iter()
+        {
             hook(root);
         }
-        for entry in self.picked.lock().expect("workspace registry poisoned").iter() {
+        for entry in self
+            .picked
+            .lock()
+            .expect("workspace registry poisoned")
+            .iter()
+        {
             hook(&entry.path);
         }
     }
 
     fn grant_asset(&self, path: &Path) {
-        let hook = self.asset_grant.read().expect("workspace registry poisoned").clone();
+        let hook = self
+            .asset_grant
+            .read()
+            .expect("workspace registry poisoned")
+            .clone();
         if let Some(hook) = hook {
             hook(path);
         }
@@ -182,9 +204,9 @@ impl WorkspaceRegistry {
     /// grants a sibling or a directory named after it.
     fn is_picked(&self, target: &Path, need_writable: bool) -> bool {
         let picked = self.picked.lock().expect("picked path registry poisoned");
-        picked.iter().any(|entry| {
-            (!need_writable || entry.writable) && target.starts_with(&entry.path)
-        })
+        picked
+            .iter()
+            .any(|entry| (!need_writable || entry.writable) && target.starts_with(&entry.path))
     }
 }
 
@@ -219,10 +241,7 @@ pub fn ensure_authorized_path(
 }
 
 /// [`ensure_authorized_path`] plus the write-tier system-directory blocks.
-pub fn ensure_writable_path(
-    registry: &WorkspaceRegistry,
-    path: &Path,
-) -> Result<PathBuf, String> {
+pub fn ensure_writable_path(registry: &WorkspaceRegistry, path: &Path) -> Result<PathBuf, String> {
     authorize_path(
         registry,
         path,
@@ -1166,13 +1185,22 @@ mod appimage_tests {
         let env = reader(&[
             ("LD_LIBRARY_PATH", "/tmp/.mount_Tarex_X/usr/lib:/usr/lib"),
             ("PATH", "/tmp/.mount_Tarex_X/usr/bin:/usr/bin:/bin"),
-            ("GST_PLUGIN_SYSTEM_PATH", "/tmp/.mount_Tarex_X/usr/lib/gstreamer-1.0"),
+            (
+                "GST_PLUGIN_SYSTEM_PATH",
+                "/tmp/.mount_Tarex_X/usr/lib/gstreamer-1.0",
+            ),
             ("APPDIR", "/tmp/.mount_Tarex_X"),
         ]);
         let out = compute_appimage_env_overrides(appdir, env);
 
-        assert_eq!(find(&out, "LD_LIBRARY_PATH"), Some(&Some(OsString::from("/usr/lib"))));
-        assert_eq!(find(&out, "PATH"), Some(&Some(OsString::from("/usr/bin:/bin"))));
+        assert_eq!(
+            find(&out, "LD_LIBRARY_PATH"),
+            Some(&Some(OsString::from("/usr/lib")))
+        );
+        assert_eq!(
+            find(&out, "PATH"),
+            Some(&Some(OsString::from("/usr/bin:/bin")))
+        );
         // Only an APPDIR entry, so the var is removed entirely.
         assert_eq!(find(&out, "GST_PLUGIN_SYSTEM_PATH"), Some(&None));
         assert_eq!(find(&out, "APPDIR"), Some(&None));
@@ -1196,10 +1224,17 @@ mod appimage_tests {
     fn unsets_value_vars_only_when_pointing_into_appdir() {
         let appdir = Path::new("/tmp/.mount_Tarex_X");
         let into = reader(&[("LD_PRELOAD", "/tmp/.mount_Tarex_X/usr/lib/x.so")]);
-        assert_eq!(find(&compute_appimage_env_overrides(appdir, into), "LD_PRELOAD"), Some(&None));
+        assert_eq!(
+            find(&compute_appimage_env_overrides(appdir, into), "LD_PRELOAD"),
+            Some(&None)
+        );
 
         let outside = reader(&[("FONTCONFIG_FILE", "/etc/fonts/fonts.conf")]);
-        assert!(find(&compute_appimage_env_overrides(appdir, outside), "FONTCONFIG_FILE").is_none());
+        assert!(find(
+            &compute_appimage_env_overrides(appdir, outside),
+            "FONTCONFIG_FILE"
+        )
+        .is_none());
     }
 }
 
@@ -1380,7 +1415,9 @@ mod picked_path_tests {
         let env = root.path().join(".env");
         std::fs::write(&env, b"SECRET=1").unwrap();
         let registry = WorkspaceRegistry::default();
-        registry.authorize(root.path()).expect("authorize fixture root");
+        registry
+            .authorize(root.path())
+            .expect("authorize fixture root");
         (root, registry, env)
     }
 
@@ -1481,7 +1518,10 @@ mod picked_path_tests {
     #[test]
     fn grants_are_scoped_to_the_paths_they_name() {
         let (_root, registry, env) = workspace_with_secret();
-        let other = env.parent().expect("secret has a parent").join(".env.local");
+        let other = env
+            .parent()
+            .expect("secret has a parent")
+            .join(".env.local");
         std::fs::write(&other, b"OTHER=1").unwrap();
 
         registry.grant_picked(&env, false).expect("grant picked");
@@ -1547,10 +1587,8 @@ mod asset_grant_tests {
     #[test]
     fn picked_paths_are_mirrored_too() {
         let (registry, seen) = recorder();
-        let file = std::env::temp_dir().join(format!(
-            "tarex-asset-grant-{}.txt",
-            std::process::id()
-        ));
+        let file =
+            std::env::temp_dir().join(format!("tarex-asset-grant-{}.txt", std::process::id()));
         std::fs::write(&file, b"x").unwrap();
 
         registry.grant_picked(&file, false).expect("grant picked");

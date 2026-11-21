@@ -169,7 +169,6 @@ fn entry(service: &str, account: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(service, account).map_err(|e| e.to_string())
 }
 
-
 pub fn legacy_credentials_available(legacy_local_dirs: &[PathBuf]) -> bool {
     #[cfg(target_os = "linux")]
     {
@@ -439,7 +438,10 @@ mod tests {
         write_store_at(&p, &HashMap::new()).unwrap();
 
         let tmp_path = p.with_extension("json.tmp");
-        assert!(!tmp_path.exists(), "tmp file must be renamed away on success");
+        assert!(
+            !tmp_path.exists(),
+            "tmp file must be renamed away on success"
+        );
     }
 
     #[test]

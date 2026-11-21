@@ -9,12 +9,12 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 
 use serde_json::{json, Value};
-use tauri::{Emitter, Manager};
 use tarex_control_protocol::{
     ControlDescriptor, ControlRequest, ControlResponse, FrontendRequest, FrontendResponse,
     OpenParams, MAX_MESSAGE_BYTES, METHODS, METHOD_CAPABILITIES, METHOD_IDENTIFY, METHOD_OPEN,
     METHOD_PING, PROTOCOL_VERSION, SERVER_RESPONSE_ID,
 };
+use tauri::{Emitter, Manager};
 
 use crate::modules::{fs, workspace};
 

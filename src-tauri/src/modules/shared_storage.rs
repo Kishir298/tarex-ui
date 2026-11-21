@@ -111,10 +111,7 @@ pub fn shared_storage_paths(app: tauri::AppHandle) -> Result<SharedStoragePaths,
 }
 
 pub fn legacy_local_data_dirs(app: &tauri::AppHandle) -> Result<Vec<PathBuf>, String> {
-    let local_data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?;
+    let local_data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     Ok(legacy_local_candidates(&local_data))
 }
 
@@ -178,10 +175,7 @@ fn write_marker(data: &Path, summary: &LegacyImportSummary) -> Result<(), String
 }
 
 pub fn mark_credentials_handled(app: &tauri::AppHandle) -> Result<(), String> {
-    let data = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     write_atomic(&data.join(CREDENTIALS_MARKER), b"1").map_err(|e| e.to_string())
 }
@@ -229,7 +223,11 @@ fn import_bundle(
     };
     let mut background_reset = false;
 
-    let settings = import_settings(&bundle.settings, &data.join(SETTINGS), &mut background_reset)?;
+    let settings = import_settings(
+        &bundle.settings,
+        &data.join(SETTINGS),
+        &mut background_reset,
+    )?;
     if settings {
         summary.files.push(SETTINGS.to_string());
     }
@@ -290,7 +288,11 @@ fn import_bundle(
     Ok(summary)
 }
 
-fn import_settings(source: &Path, destination: &Path, background_reset: &mut bool) -> Result<bool, String> {
+fn import_settings(
+    source: &Path,
+    destination: &Path,
+    background_reset: &mut bool,
+) -> Result<bool, String> {
     if destination.exists() {
         return Ok(false);
     }
@@ -306,7 +308,11 @@ fn import_settings(source: &Path, destination: &Path, background_reset: &mut boo
             serde_json::Value::String("tarex-default".to_string()),
         );
     }
-    if object.get("backgroundKind").and_then(|value| value.as_str()) == Some("image") {
+    if object
+        .get("backgroundKind")
+        .and_then(|value| value.as_str())
+        == Some("image")
+    {
         object.insert(
             "backgroundKind".to_string(),
             serde_json::Value::String("none".to_string()),
@@ -390,9 +396,15 @@ mod tests {
         );
         write(&old.join("terax-ai-sessions.json"), r#"{"sessions":[]}"#);
         write(&old.join("suspended-processes.json"), r#"[123]"#);
-        write(&old.join("secrets.json"), r#"{"terax-ai::openai-api-key":"secret"}"#);
+        write(
+            &old.join("secrets.json"),
+            r#"{"terax-ai::openai-api-key":"secret"}"#,
+        );
         let old_config = root.path().join("config-root").join(LEGACY_TERAX_ID);
-        write(&old_config.join("themes/mine.terax-theme"), r#"{"id":"mine"}"#);
+        write(
+            &old_config.join("themes/mine.terax-theme"),
+            r#"{"id":"mine"}"#,
+        );
 
         let summary = ensure_import(&data, &config);
         assert!(summary.imported);
@@ -410,8 +422,13 @@ mod tests {
         assert!(config.join("themes/mine.tarex-theme").is_file());
         assert!(!config.join("themes/mine.terax-theme").exists());
         assert!(data.join(IMPORT_MARKER).is_file());
-        assert!(summary.files.contains(&"tarex-ai-sessions.json".to_string()));
-        assert!(summary.files.iter().any(|file| file.contains("mine.tarex-theme")));
+        assert!(summary
+            .files
+            .contains(&"tarex-ai-sessions.json".to_string()));
+        assert!(summary
+            .files
+            .iter()
+            .any(|file| file.contains("mine.tarex-theme")));
     }
 
     #[test]

@@ -462,13 +462,17 @@ pub async fn fs_save_copy(
     ensure_authorized(&registry, &source)?;
     ensure_writable(&registry, &destination)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let parent = destination.parent().ok_or("Missing destination directory")?;
+        let parent = destination
+            .parent()
+            .ok_or("Missing destination directory")?;
         let temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
         std::fs::copy(source, temporary.path()).map_err(|e| e.to_string())?;
         temporary.as_file().sync_all().map_err(|e| e.to_string())?;
         temporary.persist(destination).map_err(|e| e.to_string())?;
         Ok(())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Copies external files/dirs into a destination directory, recursively for
@@ -583,13 +587,15 @@ mod tests {
         assert_eq!(std::fs::read(&to).unwrap(), b"payload");
 
         // Missing source is reported, not silently ignored.
-        let err = fs_rename_impl(s(from), s(dir.path().join("c.txt")), &WorkspaceEnv::Local).unwrap_err();
+        let err =
+            fs_rename_impl(s(from), s(dir.path().join("c.txt")), &WorkspaceEnv::Local).unwrap_err();
         assert!(err.contains("not found"), "got: {err}");
 
         // Refusing to overwrite an existing target is the data-loss guard.
         let occupied = dir.path().join("keep.txt");
         std::fs::write(&occupied, b"keep").unwrap();
-        let err = fs_rename_impl(s(to.clone()), s(occupied.clone()), &WorkspaceEnv::Local).unwrap_err();
+        let err =
+            fs_rename_impl(s(to.clone()), s(occupied.clone()), &WorkspaceEnv::Local).unwrap_err();
         assert!(err.contains("already exists"), "got: {err}");
         assert_eq!(std::fs::read(&occupied).unwrap(), b"keep");
         assert!(to.exists());

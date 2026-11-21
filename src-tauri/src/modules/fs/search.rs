@@ -115,8 +115,7 @@ pub fn fs_search_impl(
             if !name.starts_with('.') {
                 return true;
             }
-            dent.file_type().map(|t| t.is_file()).unwrap_or(false)
-                && is_dev_config_file(name)
+            dent.file_type().map(|t| t.is_file()).unwrap_or(false) && is_dev_config_file(name)
         })
         .build();
 

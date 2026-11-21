@@ -170,12 +170,17 @@ fn updater_supported() -> bool {
 mod updater_config_tests {
     #[test]
     fn updater_requires_signed_versions_from_the_fork_release_channel() {
-        let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        let updater: tauri_plugin_updater::Config = serde_json::from_value(config["plugins"]["updater"].clone()).unwrap();
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let updater: tauri_plugin_updater::Config =
+            serde_json::from_value(config["plugins"]["updater"].clone()).unwrap();
         assert!(updater.require_signed_version);
         assert!(!updater.pubkey.is_empty());
         assert_eq!(updater.endpoints.len(), 1);
-        assert_eq!(updater.endpoints[0].as_str(), "https://github.com/Kishir298/tarex-ui/releases/latest/download/latest.json");
+        assert_eq!(
+            updater.endpoints[0].as_str(),
+            "https://github.com/Kishir298/tarex-ui/releases/latest/download/latest.json"
+        );
     }
 }
 
@@ -409,7 +414,9 @@ pub fn run() {
                 // Servers exit on stdin EOF, but destructors are not guaranteed
                 // on process exit; kill explicitly.
                 tauri::RunEvent::Exit => {
-                    if let Some(state) = app.try_state::<modules::terminal_clipboard::TerminalClipboardState>() {
+                    if let Some(state) =
+                        app.try_state::<modules::terminal_clipboard::TerminalClipboardState>()
+                    {
                         state.cleanup();
                     }
                     // Never leave processes the user suspended in a stopped

@@ -65,8 +65,8 @@ const MAX_ENV_VALUE_LEN: usize = 1_024;
 /// executable name, and rejecting them keeps a future shell-out from turning
 /// these values into a script.
 const FORBIDDEN_COMMAND_CHARS: &[char] = &[
-    ' ', '\t', '\n', '\r', ';', '&', '|', '<', '>', '$', '`', '\'', '"', '(',
-    ')', '{', '}', '[', ']', '*', '?', '!', '~', '#', '%',
+    ' ', '\t', '\n', '\r', ';', '&', '|', '<', '>', '$', '`', '\'', '"', '(', ')', '{', '}', '[',
+    ']', '*', '?', '!', '~', '#', '%',
 ];
 
 fn has_control_bytes(value: &str) -> bool {
@@ -85,8 +85,13 @@ pub fn validate_command(command: &str) -> Result<(), String> {
     if has_control_bytes(command) {
         return Err("lsp: command contains control bytes".into());
     }
-    if let Some(found) = command.chars().find(|c| FORBIDDEN_COMMAND_CHARS.contains(c)) {
-        return Err(format!("lsp: command contains a forbidden character: {found:?}"));
+    if let Some(found) = command
+        .chars()
+        .find(|c| FORBIDDEN_COMMAND_CHARS.contains(c))
+    {
+        return Err(format!(
+            "lsp: command contains a forbidden character: {found:?}"
+        ));
     }
     Ok(())
 }
@@ -106,7 +111,9 @@ fn validate_args(args: &[String]) -> Result<(), String> {
         total += arg.len();
     }
     if total > MAX_ARGS_TOTAL {
-        return Err(format!("lsp: arguments exceed {MAX_ARGS_TOTAL} bytes in total"));
+        return Err(format!(
+            "lsp: arguments exceed {MAX_ARGS_TOTAL} bytes in total"
+        ));
     }
     Ok(())
 }
@@ -118,10 +125,14 @@ fn validate_env(env: Option<&HashMap<String, String>>) -> Result<(), String> {
             return Err(format!("lsp: environment variable is not allowed: {key}"));
         }
         if value.len() > MAX_ENV_VALUE_LEN {
-            return Err(format!("lsp: environment variable {key} exceeds {MAX_ENV_VALUE_LEN} bytes"));
+            return Err(format!(
+                "lsp: environment variable {key} exceeds {MAX_ENV_VALUE_LEN} bytes"
+            ));
         }
         if has_control_bytes(value) {
-            return Err(format!("lsp: environment variable {key} contains control bytes"));
+            return Err(format!(
+                "lsp: environment variable {key} contains control bytes"
+            ));
         }
     }
     Ok(())
@@ -142,8 +153,12 @@ pub fn validate_request(
 /// True when this exact pair is one of the shipped presets.
 pub fn is_preset(command: &str, args: &[String]) -> bool {
     PRESET_SERVERS.iter().any(|(preset, preset_args)| {
-        preset == &command && preset_args.len() == args.len()
-            && preset_args.iter().zip(args).all(|(expected, got)| expected == got)
+        preset == &command
+            && preset_args.len() == args.len()
+            && preset_args
+                .iter()
+                .zip(args)
+                .all(|(expected, got)| expected == got)
     })
 }
 
@@ -268,16 +283,7 @@ mod tests {
     #[test]
     fn command_shape_rejects_scripts_and_control_bytes() {
         for command in [
-            "",
-            "   ",
-            "sh -c id",
-            "my;lsp",
-            "my|lsp",
-            "$(id)",
-            "a\u{0}b",
-            "a\nb",
-            "lsp?",
-            "*",
+            "", "   ", "sh -c id", "my;lsp", "my|lsp", "$(id)", "a\u{0}b", "a\nb", "lsp?", "*",
         ] {
             assert!(
                 validate_command(command).is_err(),
@@ -311,11 +317,20 @@ mod tests {
         env.insert("CARGO_BUILD_JOBS".to_string(), "2".to_string());
         assert!(validate_env(Some(&env)).is_ok());
 
-        for key in ["LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "PATH", "HOME", "PYTHONSTARTUP"] {
+        for key in [
+            "LD_PRELOAD",
+            "DYLD_INSERT_LIBRARIES",
+            "PATH",
+            "HOME",
+            "PYTHONSTARTUP",
+        ] {
             let mut blocked = HashMap::new();
             blocked.insert(key.to_string(), "/tmp/evil.so".to_string());
             let error = validate_env(Some(&blocked)).unwrap_err();
-            assert!(error.contains("not allowed"), "{key} must be refused: {error}");
+            assert!(
+                error.contains("not allowed"),
+                "{key} must be refused: {error}"
+            );
         }
 
         let mut too_long = HashMap::new();
@@ -338,8 +353,6 @@ mod tests {
         assert!(validate_request("sh -c id", &args(&[]), None).is_err());
         let mut env = HashMap::new();
         env.insert("LD_PRELOAD".to_string(), "x".to_string());
-        assert!(
-            validate_request("rust-analyzer", &args(&[]), Some(&env)).is_err()
-        );
+        assert!(validate_request("rust-analyzer", &args(&[]), Some(&env)).is_err());
     }
 }

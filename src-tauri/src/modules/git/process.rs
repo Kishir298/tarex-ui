@@ -15,9 +15,9 @@ use crate::modules::git::types::{
     GitOutput, TextSource, DEFAULT_TIMEOUT_SECS, MAX_FILE_BYTES, MAX_OUTPUT_BYTES,
     MAX_TIMEOUT_SECS, MIN_GIT_VERSION,
 };
-use crate::modules::workspace::WorkspaceEnv;
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;
+use crate::modules::workspace::WorkspaceEnv;
 
 #[derive(Clone)]
 enum Availability {
@@ -572,10 +572,10 @@ mod tests {
 
     #[test]
     fn leaves_unrelated_stderr_untouched() {
-        assert!(
-            classify_auth_error("fatal: not a git repository (or any of the parent directories)")
-                .is_none()
-        );
+        assert!(classify_auth_error(
+            "fatal: not a git repository (or any of the parent directories)"
+        )
+        .is_none());
         assert!(classify_auth_error("").is_none());
         assert!(
             classify_auth_error("error: RPC failed because the HTTP client could not connect")

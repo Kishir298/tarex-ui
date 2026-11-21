@@ -136,7 +136,7 @@ this is a workflow-design artifact, not a defect.
 | --- | --- | --- | --- | --- |
 | 1 | Duplicate `use std::path::PathBuf;` at file scope (`#[cfg(target_os = "linux")]` copy shadowed by unconditional import) | `src-tauri/src/modules/secrets.rs:20,44` | source code | **fixed** (duplicate removed) |
 | 2 | `BOOL` moved out of `windows_sys::Win32::Foundation` in windows-sys 0.61 → must be `windows_sys::core::BOOL` | `src-tauri/src/modules/process_control.rs:199` | dependency upgrade drift | **fixed** (import corrected) |
-| 3 | No Tarex updater signing keypair exists; `TAURI_SIGNING_PRIVATE_KEY` repository secret is empty, and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is hardcoded `""` in the workflow | `release.yml`, repo secrets, `tauri.conf.json` pubkey | configuration / secrets | pending (Phase 7) |
+| 3 | No Tarex updater signing keypair exists; `TAURI_SIGNING_PRIVATE_KEY` repository secret is empty, and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is hardcoded `""` in the workflow | `release.yml`, repo secrets, `tauri.conf.json` pubkey | configuration / secrets | **fixed** — Tarex-owned keypair generated; `tauri.conf.json` pubkey replaced; `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set as repository secrets; both `release.yml` password bindings now read the secret. Signature round-trip verified locally (Ed25519 over Blake2b-512 verifies against the committed pubkey). |
 | 4 | Release workflow triggers on every push to `main`, so a broken commit immediately starts a doomed release | `.github/workflows/release.yml` | workflow design | pending (Phase 7) |
 | 5 | CI workflow has no rustfmt gate, no top-level `permissions`, no step timeouts | `.github/workflows/ci.yml` | workflow design | pending (Phase 8) |
 | 6 | Windows runner transient `install-action` bash startup failure | GitHub runner infra | runner environment | not actionable; re-run if it recurs |
@@ -155,5 +155,6 @@ this is a workflow-design artifact, not a defect.
 Both source root causes (1 and 2) were reproduced against the exact log
 text above and fixed locally; `cargo check --all-targets --locked` passes on
 macOS after the fix. Linux/Windows compile proof requires CI on the pushed
-branch. Root cause 3 requires generating a Tarex-owned updater keypair and
-populating repository secrets.
+branch. Root cause 3 was remediated by generating a Tarex-owned updater
+keypair; the private key and its passphrase live only in `~/.tauri/` on the
+maintainer machine and as the two repository secrets, never in the tree.

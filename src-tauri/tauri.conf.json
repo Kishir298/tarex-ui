@@ -170,7 +170,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM4NEJFRDQ2ODU0OUVFMUMKUldRYzdrbUZSdTFMT0NURzR2UHpBSU9mdmxuR1BUdGZ1cUlWYU1hbUdKamlwTWQza0g2S09Xd0QK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCRTE2QjVFQjdCOUU4ODQKUldTRTZMbTNYbXZocTE5YTIrNFFkWEtkTkkxUlRpK3VYNSs5Zk9uUERYSklmSXp5ZDRRQmpYK3EK",
       "requireSignedVersion": true,
       "endpoints": [
         "https://github.com/Kishir298/tarex-ui/releases/latest/download/latest.json"

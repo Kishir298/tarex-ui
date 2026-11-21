@@ -231,6 +231,23 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(move |_app| {
             modules::keyboard::install(_app.handle());
+            // Mirror the path registry into the asset protocol scope so media
+            // previews resolve exactly the paths fs_* would allow. The static
+            // scope in tauri.conf.json no longer grants `**`.
+            let registry = _app.state::<workspace::WorkspaceRegistry>();
+            let handle = _app.handle().clone();
+            registry.set_asset_grant(move |path| {
+                let scope = handle.asset_protocol_scope();
+                let granted = if path.is_dir() {
+                    scope.allow_directory(path, true)
+                } else {
+                    scope.allow_file(path)
+                };
+                if let Err(error) = granted {
+                    log::warn!("asset scope grant for {} failed: {error}", path.display());
+                }
+            });
+            registry.replay_asset_grants();
             #[cfg(target_os = "macos")]
             modules::window_presentation::macos::install(_app.handle());
             if let Err(error) = control::start(_app.handle().clone(), control_for_setup.clone()) {
@@ -282,6 +299,7 @@ pub fn run() {
             modules::keyboard::keyboard_layout,
             modules::dialog::dialog_open_files,
             modules::dialog::dialog_save_as,
+            modules::dialog::open_path,
             modules::ai_session::ai_session_create,
             modules::ai_session::ai_session_set_plan_mode,
             modules::ai_session::ai_session_plan_mode,

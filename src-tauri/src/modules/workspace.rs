@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,9 @@ struct CanonicalEntry {
     inserted_at: Instant,
 }
 
+/// Hook that mirrors a newly authorized path into the asset protocol scope.
+type AssetGrant = Arc<dyn Fn(&Path) + Send + Sync>;
+
 /// A path the user confirmed in an OS file dialog, remembered for the session.
 ///
 /// `writable` separates an "Open" pick (read-only) from a "Save as" pick.
@@ -33,14 +36,50 @@ pub struct WorkspaceRegistry {
     roots: Mutex<HashSet<PathBuf>>,
     canonical_cache: Mutex<HashMap<PathBuf, CanonicalEntry>>,
     picked: Mutex<Vec<PickedEntry>>,
+    /// Mirrors every authorization into the asset protocol scope so
+    /// `<img src="asset://…">` can only reach paths the filesystem commands
+    /// already allow. Installed once during app setup; `None` outside the
+    /// app (unit tests, library use) simply skips the mirror.
+    asset_grant: RwLock<Option<AssetGrant>>,
 }
 
 impl WorkspaceRegistry {
     pub fn authorize<P: AsRef<Path>>(&self, path: P) -> std::io::Result<PathBuf> {
         let canonical = std::fs::canonicalize(path.as_ref())?;
-        let mut set = self.roots.lock().expect("workspace registry poisoned");
-        set.insert(canonical.clone());
+        {
+            let mut set = self.roots.lock().expect("workspace registry poisoned");
+            set.insert(canonical.clone());
+        }
+        self.grant_asset(&canonical);
         Ok(canonical)
+    }
+
+    /// Installs the hook that mirrors authorizations into the asset protocol
+    /// scope. Call once, during app setup, before any path is authorized.
+    pub fn set_asset_grant(&self, grant: impl Fn(&Path) + Send + Sync + 'static) {
+        *self.asset_grant.write().expect("workspace registry poisoned") =
+            Some(Arc::new(grant));
+    }
+
+    /// Replays everything authorized before the hook was installed (the
+    /// bootstrap roots and launch directory run while the builder is still
+    /// being constructed, ahead of `setup`).
+    pub fn replay_asset_grants(&self) {
+        let hook = self.asset_grant.read().expect("workspace registry poisoned").clone();
+        let Some(hook) = hook else { return; };
+        for root in self.roots.lock().expect("workspace registry poisoned").iter() {
+            hook(root);
+        }
+        for entry in self.picked.lock().expect("workspace registry poisoned").iter() {
+            hook(&entry.path);
+        }
+    }
+
+    fn grant_asset(&self, path: &Path) {
+        let hook = self.asset_grant.read().expect("workspace registry poisoned").clone();
+        if let Some(hook) = hook {
+            hook(path);
+        }
     }
 
     pub fn is_authorized(&self, target: &Path) -> bool {
@@ -132,6 +171,8 @@ impl WorkspaceRegistry {
             path: authorized.clone(),
             writable,
         });
+        drop(picked);
+        self.grant_asset(&authorized);
         Ok(authorized)
     }
 
@@ -1448,5 +1489,83 @@ mod picked_path_tests {
         assert!(ensure_authorized(&registry, &env).is_ok());
         // `.env.local` is still a secret basename and was never picked.
         assert!(ensure_authorized(&registry, &other).is_err());
+    }
+}
+
+#[cfg(test)]
+mod asset_grant_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    fn recorder() -> (WorkspaceRegistry, Arc<Mutex<Vec<PathBuf>>>) {
+        let registry = WorkspaceRegistry::default();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&seen);
+        registry.set_asset_grant(move |p| {
+            sink.lock().expect("asset grant sink").push(p.to_path_buf());
+        });
+        (registry, seen)
+    }
+
+    #[test]
+    fn authorize_mirrors_into_the_asset_grant() {
+        let (registry, seen) = recorder();
+        let dir = std::env::temp_dir();
+        registry.authorize(&dir).expect("authorize");
+
+        let seen = seen.lock().expect("asset grant sink");
+        assert_eq!(seen.len(), 1, "the first authorization must be mirrored");
+        assert_eq!(seen[0], dir.canonicalize().expect("canonical temp"));
+    }
+
+    #[test]
+    fn replay_covers_paths_authorized_before_the_hook_existed() {
+        // Bootstrap runs while the builder is still constructing, so roots can
+        // be authorized before setup installs the hook.
+        let registry = WorkspaceRegistry::default();
+        let dir = std::env::temp_dir();
+        registry.authorize(&dir).expect("authorize");
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&seen);
+        registry.set_asset_grant(move |p| {
+            sink.lock().expect("asset grant sink").push(p.to_path_buf());
+        });
+        assert!(
+            seen.lock().expect("asset grant sink").is_empty(),
+            "nothing is mirrored until the hook is installed"
+        );
+
+        registry.replay_asset_grants();
+        assert_eq!(
+            seen.lock().expect("asset grant sink").len(),
+            1,
+            "replay must cover the pre-existing root"
+        );
+    }
+
+    #[test]
+    fn picked_paths_are_mirrored_too() {
+        let (registry, seen) = recorder();
+        let file = std::env::temp_dir().join(format!(
+            "tarex-asset-grant-{}.txt",
+            std::process::id()
+        ));
+        std::fs::write(&file, b"x").unwrap();
+
+        registry.grant_picked(&file, false).expect("grant picked");
+        {
+            let seen = seen.lock().expect("asset grant sink");
+            assert_eq!(seen.len(), 1);
+            assert_eq!(seen[0], file.canonicalize().expect("canonical file"));
+        }
+        std::fs::remove_file(&file).unwrap();
+    }
+
+    #[test]
+    fn no_hook_is_not_an_error() {
+        let registry = WorkspaceRegistry::default();
+        registry.authorize(std::env::temp_dir()).expect("authorize");
+        registry.replay_asset_grants();
     }
 }

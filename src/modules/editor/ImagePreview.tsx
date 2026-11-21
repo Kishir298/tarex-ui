@@ -4,7 +4,7 @@ import { currentWorkspaceEnv } from "@/modules/workspace";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Image } from "@tauri-apps/api/image";
 import { writeImage, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -42,7 +42,7 @@ export function ImagePreview({path}:{path:string}) {
     <ContextMenuItem onSelect={()=>setScale(1)}>Actual Size</ContextMenuItem>
     <ContextMenuItem onSelect={()=>setScale(null)}>Fit to Window</ContextMenuItem>
     <ContextMenuSeparator/>
-    <ContextMenuItem onSelect={()=>run(()=>openPath(path))}>Open Externally</ContextMenuItem>
+      <ContextMenuItem onSelect={()=>run(()=>invoke("open_path",{path,workspace:currentWorkspaceEnv()}).then(()=>undefined))}>Open Externally</ContextMenuItem>
     <ContextMenuItem onSelect={()=>run(()=>revealItemInDir(path))}>Reveal in {IS_MAC?"Finder":IS_WINDOWS?"Explorer":"File Manager"}</ContextMenuItem>
   </ContextMenuContent></ContextMenu>;
 }

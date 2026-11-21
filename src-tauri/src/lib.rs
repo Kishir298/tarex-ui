@@ -300,6 +300,8 @@ pub fn run() {
             updater_supported,
             modules::terminal_clipboard::terminal_clipboard_read,
             modules::shared_storage::shared_storage_paths,
+            modules::shared_storage::imported_commands_read,
+            modules::shared_storage::imported_commands_resolve,
             modules::dashboard::dashboard_snapshot,
             modules::keyboard::keyboard_layout,
             modules::dialog::dialog_open_files,

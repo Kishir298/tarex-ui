@@ -18,6 +18,17 @@ const NEW_THEME_EXT: &str = ".tarex-theme";
 const MAX_STORE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_THEME_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_THEMES: usize = 200;
+const QUARANTINE: &str = "tarex-imported-commands.json";
+
+/// Settings keys that carry executable commands. A legacy import copies
+/// preferences, not consent: these are held back into a quarantine file and
+/// applied only after the user reviews them (Finding 12).
+const COMMAND_SETTINGS: &[(&str, &str)] = &[
+    ("terminalShell", "Terminal shell"),
+    ("agentLaunchCommands", "Agent launch commands"),
+    ("editorCustomFormatCommand", "Custom formatter command"),
+    ("lspCustomServers", "Custom language servers"),
+];
 
 const STORES: &[(&str, &str)] = &[
     ("terax-ai-sessions.json", "tarex-ai-sessions.json"),
@@ -180,6 +191,108 @@ pub fn mark_credentials_handled(app: &tauri::AppHandle) -> Result<(), String> {
     write_atomic(&data.join(CREDENTIALS_MARKER), b"1").map_err(|e| e.to_string())
 }
 
+#[derive(Serialize, Deserialize)]
+struct QuarantineFile {
+    version: u32,
+    source: String,
+    commands: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Serialize)]
+pub struct ImportedCommands {
+    pub source: String,
+    pub commands: Vec<ImportedCommand>,
+}
+
+#[derive(Serialize)]
+pub struct ImportedCommand {
+    pub key: String,
+    pub label: String,
+    pub value: serde_json::Value,
+}
+
+fn quarantine_path(data: &Path) -> PathBuf {
+    data.join(QUARANTINE)
+}
+
+fn write_quarantine(
+    data: &Path,
+    source: &str,
+    commands: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), String> {
+    fs::create_dir_all(data).map_err(|e| e.to_string())?;
+    let file = QuarantineFile {
+        version: 1,
+        source: source.to_string(),
+        commands: commands.clone(),
+    };
+    let bytes = serde_json::to_vec_pretty(&file).map_err(|e| e.to_string())?;
+    write_atomic(&quarantine_path(data), &bytes).map_err(|e| e.to_string())
+}
+
+fn read_quarantine(data: &Path) -> Option<QuarantineFile> {
+    let bytes = fs::read(quarantine_path(data)).ok()?;
+    serde_json::from_slice::<QuarantineFile>(&bytes).ok()
+}
+
+/// Lists the command-bearing settings the legacy import held back. Empty when
+/// nothing is pending, which is the state after a clean install.
+#[tauri::command]
+pub fn imported_commands_read(app: tauri::AppHandle) -> Result<ImportedCommands, String> {
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let Some(file) = read_quarantine(&data) else {
+        return Ok(ImportedCommands {
+            source: String::new(),
+            commands: Vec::new(),
+        });
+    };
+    let mut commands = Vec::new();
+    for (key, label) in COMMAND_SETTINGS {
+        if let Some(value) = file.commands.get(*key) {
+            commands.push(ImportedCommand {
+                key: (*key).to_string(),
+                label: (*label).to_string(),
+                value: value.clone(),
+            });
+        }
+    }
+    Ok(ImportedCommands {
+        source: file.source,
+        commands,
+    })
+}
+
+/// Records the user's decision on every pending key and retires it from the
+/// quarantine. Keys outside [`COMMAND_SETTINGS`] can never be applied; keys the
+/// caller does not mention stay quarantined, so nothing is lost by a partial
+/// answer. The renderer applies accepted values through its normal settings
+/// setters, which is what keeps every open window in sync.
+#[tauri::command]
+pub fn imported_commands_resolve(
+    app: tauri::AppHandle,
+    applied: Vec<String>,
+    discarded: Vec<String>,
+) -> Result<(), String> {
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    resolve_quarantine(&data, &applied, &discarded)
+}
+
+fn resolve_quarantine(data: &Path, applied: &[String], discarded: &[String]) -> Result<(), String> {
+    let Some(mut file) = read_quarantine(data) else {
+        return Ok(());
+    };
+    for key in applied.iter().chain(discarded.iter()) {
+        if COMMAND_SETTINGS.iter().any(|(known, _)| known == key) {
+            file.commands.remove(key);
+        }
+    }
+    if file.commands.is_empty() {
+        let _ = fs::remove_file(quarantine_path(data));
+        return Ok(());
+    }
+    write_quarantine(data, &file.source, &file.commands)
+}
+
 fn ensure_import(data: &Path, config: &Path) -> LegacyImportSummary {
     if let Some(summary) = read_marker(data) {
         return summary;
@@ -223,13 +336,19 @@ fn import_bundle(
     };
     let mut background_reset = false;
 
-    let settings = import_settings(
+    let quarantined = import_settings(
         &bundle.settings,
         &data.join(SETTINGS),
         &mut background_reset,
     )?;
-    if settings {
+    if quarantined.is_some() {
         summary.files.push(SETTINGS.to_string());
+    }
+    let quarantined = quarantined.unwrap_or_default();
+    let held_back = !quarantined.is_empty();
+    if held_back {
+        write_quarantine(data, bundle.id, &quarantined)?;
+        summary.files.push(QUARANTINE.to_string());
     }
 
     for (old_name, new_name) in STORES {
@@ -275,15 +394,21 @@ fn import_bundle(
         }
     }
 
+    let held_back_note = if held_back {
+        " Custom shell, formatter, agent, and language-server commands were held back — review them in Settings before they run."
+    } else {
+        ""
+    };
     if background_reset {
         summary.notice = Some(
-            "Imported your Terex/Terax settings, chats, agents, snippets, spaces, and themes. Background images were not copied; choose a new image in Settings.".to_string(),
+            format!(
+                "Imported your Terex/Terax settings, chats, agents, snippets, spaces, and themes. Background images were not copied; choose a new image in Settings.{held_back_note}"
+            ),
         );
     } else if !summary.files.is_empty() {
-        summary.notice = Some(
-            "Imported your Terex/Terax settings, chats, agents, snippets, spaces, and themes."
-                .to_string(),
-        );
+        summary.notice = Some(format!(
+            "Imported your Terex/Terax settings, chats, agents, snippets, spaces, and themes.{held_back_note}"
+        ));
     }
     Ok(summary)
 }
@@ -292,9 +417,9 @@ fn import_settings(
     source: &Path,
     destination: &Path,
     background_reset: &mut bool,
-) -> Result<bool, String> {
+) -> Result<Option<serde_json::Map<String, serde_json::Value>>, String> {
     if destination.exists() {
-        return Ok(false);
+        return Ok(None);
     }
     let bytes = read_regular_file(source, MAX_STORE_BYTES)?;
     let mut value: serde_json::Value =
@@ -320,9 +445,28 @@ fn import_settings(
         object.insert("backgroundImageId".to_string(), serde_json::Value::Null);
         *background_reset = true;
     }
+    let mut quarantined = serde_json::Map::new();
+    for (key, _label) in COMMAND_SETTINGS {
+        if let Some(held) = object.remove(*key) {
+            if !is_blank(&held) {
+                quarantined.insert((*key).to_string(), held);
+            }
+        }
+    }
     let rendered = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
     write_atomic(destination, &rendered).map_err(|e| e.to_string())?;
-    Ok(true)
+    Ok(Some(quarantined))
+}
+
+/// `true` for values that carry nothing worth reviewing (`""`, `[]`, `{}`).
+fn is_blank(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Null => true,
+        serde_json::Value::String(text) => text.trim().is_empty(),
+        serde_json::Value::Array(items) => items.is_empty(),
+        serde_json::Value::Object(map) => map.is_empty(),
+        _ => false,
+    }
 }
 
 fn copy_json_file(source: &Path, destination: &Path, max_bytes: u64) -> bool {
@@ -480,5 +624,144 @@ mod tests {
     fn filetime_set(path: &Path, time: std::time::SystemTime) -> std::io::Result<()> {
         let file = fs::OpenOptions::new().write(true).open(path)?;
         file.set_times(fs::FileTimes::new().set_modified(time))
+    }
+}
+
+#[cfg(test)]
+mod quarantine_tests {
+    use super::*;
+
+    fn write(path: &Path, text: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+
+    /// Imports a legacy settings file that carries every command-bearing key
+    /// and returns the app data dir.
+    fn import_with_commands() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("data/new-data");
+        let config = root.path().join("config/new-config");
+        let old = root.path().join("data").join(LEGACY_TERAX_ID);
+        write(
+            &old.join(LEGACY_SETTINGS),
+            r#"{
+              "themeId":"tarex-default",
+              "terminalShell":"/bin/zsh",
+              "editorCustomFormatCommand":"prettier --write $FILE",
+              "agentLaunchCommands":{"claude":"claude --dangerously-skip-permissions"},
+              "lspCustomServers":[{"command":"weird-lsp","args":[]}],
+              "customInstructions":"keep me"
+            }"#,
+        );
+        let summary = ensure_import(&data, &config);
+        assert!(
+            summary.error.is_none(),
+            "import failed: {:?}",
+            summary.error
+        );
+        root
+    }
+
+    #[test]
+    fn command_settings_are_held_back_rather_than_imported() {
+        let root = import_with_commands();
+        let data = root.path().join("data/new-data");
+
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(data.join(SETTINGS)).unwrap()).unwrap();
+        assert_eq!(settings["customInstructions"], "keep me");
+        for (key, _) in COMMAND_SETTINGS {
+            assert!(
+                settings.get(*key).is_none(),
+                "{key} must not reach active settings before review"
+            );
+        }
+
+        let file = read_quarantine(&data).expect("quarantine file must exist");
+        assert_eq!(file.source, LEGACY_TERAX_ID);
+        assert_eq!(file.commands.len(), COMMAND_SETTINGS.len());
+        assert_eq!(file.commands["terminalShell"], "/bin/zsh");
+        assert_eq!(
+            file.commands["agentLaunchCommands"]["claude"],
+            "claude --dangerously-skip-permissions"
+        );
+    }
+
+    #[test]
+    fn blank_command_values_are_not_quarantined() {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("data/new-data");
+        let config = root.path().join("config/new-config");
+        let old = root.path().join("data").join(LEGACY_TERAX_ID);
+        write(
+            &old.join(LEGACY_SETTINGS),
+            r#"{"terminalShell":"","lspCustomServers":[],"agentLaunchCommands":{},"editorCustomFormatCommand":""}"#,
+        );
+        let summary = ensure_import(&data, &config);
+        assert!(summary.error.is_none());
+        assert!(
+            read_quarantine(&data).is_none(),
+            "nothing worth reviewing means no quarantine file"
+        );
+        let settings: serde_json::Value =
+            serde_json::from_slice(&fs::read(data.join(SETTINGS)).unwrap()).unwrap();
+        assert!(settings.get("terminalShell").is_none());
+    }
+
+    #[test]
+    fn resolve_retires_decided_keys_and_keeps_the_rest() {
+        let root = import_with_commands();
+        let data = root.path().join("data/new-data");
+
+        resolve_quarantine(
+            &data,
+            &["terminalShell".to_string()],
+            &["editorCustomFormatCommand".to_string()],
+        )
+        .unwrap();
+
+        let file = read_quarantine(&data).expect("remaining keys stay quarantined");
+        assert!(file.commands.get("terminalShell").is_none());
+        assert!(file.commands.get("editorCustomFormatCommand").is_none());
+        assert!(file.commands.contains_key("agentLaunchCommands"));
+        assert!(file.commands.contains_key("lspCustomServers"));
+    }
+
+    #[test]
+    fn resolve_clears_the_file_once_every_key_is_decided() {
+        let root = import_with_commands();
+        let data = root.path().join("data/new-data");
+        let all: Vec<String> = COMMAND_SETTINGS
+            .iter()
+            .map(|(k, _)| (*k).to_string())
+            .collect();
+
+        resolve_quarantine(&data, &all, &[]).unwrap();
+        assert!(read_quarantine(&data).is_none());
+        assert!(!quarantine_path(&data).exists());
+
+        // Idempotent: a later resolve with nothing pending is a no-op.
+        resolve_quarantine(&data, &all, &[]).unwrap();
+    }
+
+    #[test]
+    fn unknown_keys_can_never_be_applied() {
+        let root = import_with_commands();
+        let data = root.path().join("data/new-data");
+
+        resolve_quarantine(&data, &["customInstructions".to_string()], &[]).unwrap();
+        let file = read_quarantine(&data).expect("quarantine untouched by an unknown key");
+        assert_eq!(file.commands.len(), COMMAND_SETTINGS.len());
+    }
+
+    #[test]
+    fn partial_answers_never_delete_data() {
+        let root = import_with_commands();
+        let data = root.path().join("data/new-data");
+
+        resolve_quarantine(&data, &[], &[]).unwrap();
+        let file = read_quarantine(&data).expect("an empty answer keeps everything");
+        assert_eq!(file.commands.len(), COMMAND_SETTINGS.len());
     }
 }

@@ -61,6 +61,7 @@ import { setLspNavigator } from "@/modules/lsp";
 import type { PreviewPaneHandle } from "@/modules/preview";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
 import { LegacyImportPrompt } from "@/modules/settings/components/LegacyImportPrompt";
+import { ImportedCommandsReview } from "@/modules/settings/components/ImportedCommandsReview";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import { setShowHidden } from "@/modules/settings/store";
 import {
@@ -1639,6 +1640,7 @@ export default function App() {
           />
           <Toaster position="bottom-right" />
           <LegacyImportPrompt />
+          <ImportedCommandsReview />
 
           {hasComposer ? (
             <>

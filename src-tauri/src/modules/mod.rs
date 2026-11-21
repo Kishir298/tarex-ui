@@ -3,6 +3,7 @@ pub mod agent;
 pub mod app_menu;
 pub mod control;
 pub mod dashboard;
+pub mod dialog;
 pub mod keyboard;
 pub mod terminal_clipboard;
 pub mod process_control;

@@ -1,6 +1,7 @@
 pub mod file;
 pub mod grep;
 pub mod mutate;
+pub mod protect;
 pub mod search;
 pub mod tree;
 pub mod watch;

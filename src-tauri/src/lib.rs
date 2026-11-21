@@ -279,6 +279,8 @@ pub fn run() {
             modules::shared_storage::shared_storage_paths,
             modules::dashboard::dashboard_snapshot,
             modules::keyboard::keyboard_layout,
+            modules::dialog::dialog_open_files,
+            modules::dialog::dialog_save_as,
             modules::process_control::suspended_processes,
             modules::process_control::control_process,
             modules::process_control::efficiency_mode_set,

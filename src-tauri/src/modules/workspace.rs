@@ -11,15 +11,28 @@ use serde::{Deserialize, Serialize};
 const CANONICAL_TTL: Duration = Duration::from_secs(1);
 const CANONICAL_CACHE_CAP: usize = 256;
 
+/// Upper bound on session-long native-dialog grants. Oldest evicts first so a
+/// runaway renderer cannot grow the set without bound.
+const PICKED_PATH_CAP: usize = 128;
+
 struct CanonicalEntry {
     canonical: PathBuf,
     inserted_at: Instant,
+}
+
+/// A path the user confirmed in an OS file dialog, remembered for the session.
+///
+/// `writable` separates an "Open" pick (read-only) from a "Save as" pick.
+struct PickedEntry {
+    path: PathBuf,
+    writable: bool,
 }
 
 #[derive(Default)]
 pub struct WorkspaceRegistry {
     roots: Mutex<HashSet<PathBuf>>,
     canonical_cache: Mutex<HashMap<PathBuf, CanonicalEntry>>,
+    picked: Mutex<Vec<PickedEntry>>,
 }
 
 impl WorkspaceRegistry {
@@ -68,6 +81,70 @@ impl WorkspaceRegistry {
         );
         Ok(canonical)
     }
+
+    /// Canonicalizes `path` (following symlinks) and reattaches any
+    /// not-yet-existing suffix, so callers see the full path the renderer
+    /// asked for rather than only its surviving ancestor.
+    fn reconstruct(&self, path: &Path) -> Result<PathBuf, String> {
+        let mut current = path.to_path_buf();
+        let mut pending: Vec<OsString> = Vec::new();
+
+        loop {
+            let canonical = match self.canonicalize_cached(&current) {
+                Ok(canonical) => canonical,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    let Some(name) = current.file_name() else {
+                        return Err(format!("path is not accessible: {}", path.display()));
+                    };
+                    pending.push(name.to_os_string());
+                    match current.parent() {
+                        Some(parent) if parent != current => current = parent.to_path_buf(),
+                        _ => return Err(format!("path is not accessible: {}", path.display())),
+                    }
+                    continue;
+                }
+                Err(error) => return Err(format!("path is not accessible: {error}")),
+            };
+
+            let mut authorized = canonical;
+            for part in pending.iter().rev() {
+                authorized.push(part);
+            }
+            return Ok(authorized);
+        }
+    }
+
+    /// Remembers a path the user confirmed in a native OS dialog for the rest
+    /// of the session, and returns its canonical form.
+    ///
+    /// This is the only way to obtain a grant that reaches outside the
+    /// authorized roots or past the sensitive-path rules, and it can only be
+    /// called from Rust code that actually opened the dialog — the renderer
+    /// cannot mint one. Pass `writable = true` for a "Save as" destination.
+    pub fn grant_picked(&self, path: &Path, writable: bool) -> Result<PathBuf, String> {
+        let authorized = self.reconstruct(path)?;
+        let mut picked = self.picked.lock().expect("picked path registry poisoned");
+        picked.retain(|entry| entry.path != authorized);
+        if picked.len() >= PICKED_PATH_CAP {
+            picked.remove(0);
+        }
+        picked.push(PickedEntry {
+            path: authorized.clone(),
+            writable,
+        });
+        Ok(authorized)
+    }
+
+    /// Whether `target` sits at or under a previously picked path.
+    ///
+    /// `Path::starts_with` compares whole components, so granting a file never
+    /// grants a sibling or a directory named after it.
+    fn is_picked(&self, target: &Path, need_writable: bool) -> bool {
+        let picked = self.picked.lock().expect("picked path registry poisoned");
+        picked.iter().any(|entry| {
+            (!need_writable || entry.writable) && target.starts_with(&entry.path)
+        })
+    }
 }
 
 /// Read/write choke point for every renderer-supplied filesystem path.
@@ -78,51 +155,78 @@ impl WorkspaceRegistry {
 /// write, rename and delete targets — are authorized through their nearest
 /// existing ancestor, so the parent must already be inside the workspace.
 ///
+/// Also applies the native sensitive-path rules from [`crate::modules::fs::protect`],
+/// which the renderer mirrors but cannot be trusted to enforce on its own.
+///
 /// Returns the canonical path on success. Note this is a point-in-time check:
 /// like the rest of the registry it does not close a TOCTOU window against a
 /// concurrent symlink swap.
+///
+/// Paths the user confirmed in a native OS dialog (see
+/// [`WorkspaceRegistry::grant_picked`]) are exempt from both the sensitive-path
+/// rules and the workspace root, because that grant is minted in Rust.
 pub fn ensure_authorized_path(
     registry: &WorkspaceRegistry,
     path: &Path,
 ) -> Result<PathBuf, String> {
-    let mut current = path.to_path_buf();
-    let mut pending: Vec<std::ffi::OsString> = Vec::new();
+    authorize_path(
+        registry,
+        path,
+        crate::modules::fs::protect::readable_violation,
+        false,
+    )
+}
 
-    loop {
-        let canonical = match registry.canonicalize_cached(&current) {
-            Ok(canonical) => canonical,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let Some(name) = current.file_name() else {
-                    return Err(format!("path is not accessible: {}", path.display()));
-                };
-                pending.push(name.to_os_string());
-                match current.parent() {
-                    Some(parent) if parent != current => current = parent.to_path_buf(),
-                    _ => return Err(format!("path is not accessible: {}", path.display())),
-                }
-                continue;
-            }
-            Err(error) => return Err(format!("path is not accessible: {error}")),
-        };
+/// [`ensure_authorized_path`] plus the write-tier system-directory blocks.
+pub fn ensure_writable_path(
+    registry: &WorkspaceRegistry,
+    path: &Path,
+) -> Result<PathBuf, String> {
+    authorize_path(
+        registry,
+        path,
+        crate::modules::fs::protect::writable_violation,
+        true,
+    )
+}
 
-        if !registry.is_authorized(&canonical) {
-            return Err(format!(
-                "path is outside the authorized workspace: {}",
-                path.display()
-            ));
-        }
+fn authorize_path(
+    registry: &WorkspaceRegistry,
+    path: &Path,
+    sensitivity: fn(&Path) -> Option<String>,
+    need_writable: bool,
+) -> Result<PathBuf, String> {
+    // Reconstruct the full path before checking: a not-yet-created target is
+    // only known once the surviving ancestor is canonical, and the sensitivity
+    // rules must see the whole path (`/usr/bin/planted`), not just `/usr/bin`.
+    let authorized = registry.reconstruct(path)?;
 
-        let mut authorized = canonical;
-        for part in pending.iter().rev() {
-            authorized.push(part);
-        }
+    if registry.is_picked(&authorized, need_writable) {
         return Ok(authorized);
     }
+
+    if let Some(reason) = sensitivity(&authorized) {
+        return Err(reason);
+    }
+
+    if !registry.is_authorized(&authorized) {
+        return Err(format!(
+            "path is outside the authorized workspace: {}",
+            path.display()
+        ));
+    }
+
+    Ok(authorized)
 }
 
 /// [`ensure_authorized_path`] for callers that only need a yes/no answer.
 pub fn ensure_authorized(registry: &WorkspaceRegistry, path: &Path) -> Result<(), String> {
     ensure_authorized_path(registry, path).map(|_| ())
+}
+
+/// [`ensure_writable_path`] for callers that only need a yes/no answer.
+pub fn ensure_writable(registry: &WorkspaceRegistry, path: &Path) -> Result<(), String> {
+    ensure_writable_path(registry, path).map(|_| ())
 }
 
 // `None` means "use bootstrapped default". `Some` is canonicalized to defeat
@@ -187,11 +291,14 @@ pub fn user_spawn_cwd_or_home(
     }
 }
 
+/// Seeds the registry with the directory the app was launched from.
+///
+/// The user's home directory is deliberately *not* granted here: a blanket
+/// home grant would make every workspace check a no-op for everything under
+/// `$HOME` (including `~/.ssh` and `~/.aws`). Home becomes authorized only
+/// when the frontend explicitly selects the Home workspace.
 pub fn bootstrap_registry(registry: &WorkspaceRegistry) {
     let _ = registry.authorize(resolve_launch_dir());
-    if let Some(home) = dirs::home_dir() {
-        let _ = registry.authorize(home);
-    }
 }
 
 #[tauri::command]
@@ -1164,5 +1271,182 @@ mod authorization_tests {
 
         let registry = authorized_registry(&root);
         assert!(ensure_authorized(&registry, &prefix_sibling.join("f.txt")).is_err());
+    }
+}
+
+#[cfg(test)]
+mod sensitive_path_tests {
+    use super::*;
+
+    /// An authorized root must not become a blanket grant: the native
+    /// sensitive-path rules apply on top of the workspace check.
+    #[test]
+    fn authorized_root_still_refuses_protected_paths() {
+        let home = tempfile::tempdir().unwrap();
+        let ssh = home.path().join(".ssh");
+        std::fs::create_dir(&ssh).unwrap();
+        let key = ssh.join("id_rsa");
+        std::fs::write(&key, b"PRIVATE").unwrap();
+
+        let registry = WorkspaceRegistry::default();
+        let home = registry.authorize(home.path()).unwrap();
+        let key = std::fs::canonicalize(&key).unwrap();
+
+        // The workspace check alone would allow this...
+        assert!(registry.is_authorized(&key));
+        // ...but the combined guard refuses it.
+        let error = ensure_authorized(&registry, &key).unwrap_err();
+        assert!(
+            error.contains("protected directory") || error.contains("sensitive-file"),
+            "expected sensitive-path refusal, got: {error}"
+        );
+
+        // Ordinary files under the same root stay readable.
+        let normal = home.join("notes.txt");
+        std::fs::write(&normal, b"hi").unwrap();
+        assert!(ensure_authorized(&registry, &normal).is_ok());
+    }
+
+    #[test]
+    fn write_tier_refuses_system_dirs_even_when_authorized() {
+        let root = std::path::Path::new("/usr/bin");
+        if !root.is_dir() {
+            return;
+        }
+        let registry = WorkspaceRegistry::default();
+        // Even an explicit grant over /usr/bin must not permit writes.
+        registry.authorize(root).expect("authorize /usr/bin");
+        let error = ensure_writable(&registry, &root.join("planted")).unwrap_err();
+        assert!(
+            error.contains("not allowed") || error.contains("protected"),
+            "got: {error}"
+        );
+        // The exact directory itself is covered too, not just its children.
+        let error = ensure_writable(&registry, root).unwrap_err();
+        assert!(
+            error.contains("not allowed") || error.contains("protected"),
+            "got: {error}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod picked_path_tests {
+    use super::*;
+
+    fn workspace_with_secret() -> (tempfile::TempDir, WorkspaceRegistry, PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let env = root.path().join(".env");
+        std::fs::write(&env, b"SECRET=1").unwrap();
+        let registry = WorkspaceRegistry::default();
+        registry.authorize(root.path()).expect("authorize fixture root");
+        (root, registry, env)
+    }
+
+    /// A native "Open" pick is a read grant only: it lifts the sensitive-path
+    /// refusal without turning into a write grant.
+    #[test]
+    fn open_pick_unblocks_reads_but_not_writes() {
+        let (_root, registry, env) = workspace_with_secret();
+
+        let error = ensure_authorized(&registry, &env).unwrap_err();
+        assert!(
+            error.contains("protected directory") || error.contains("sensitive-file"),
+            "expected sensitive-path refusal, got: {error}"
+        );
+
+        registry.grant_picked(&env, false).expect("grant picked");
+
+        assert!(ensure_authorized(&registry, &env).is_ok());
+        let error = ensure_writable(&registry, &env).unwrap_err();
+        assert!(
+            error.contains("not allowed")
+                || error.contains("protected")
+                || error.contains("sensitive-file"),
+            "a read-only pick must not permit writes, got: {error}"
+        );
+    }
+
+    /// A native "Save as" pick is a read+write grant for that destination.
+    #[test]
+    fn save_pick_unblocks_writes() {
+        let (_root, registry, env) = workspace_with_secret();
+
+        registry.grant_picked(&env, true).expect("grant picked");
+
+        assert!(ensure_writable(&registry, &env).is_ok());
+        assert!(ensure_authorized(&registry, &env).is_ok());
+    }
+
+    /// Outside the workspace the `writable` flag is what separates an "Open"
+    /// pick from a "Save as" pick, so the refusal comes from the grant itself.
+    #[test]
+    fn open_pick_does_not_grant_writes_outside_the_workspace() {
+        let outside = tempfile::tempdir().unwrap();
+        let file = outside.path().join("notes.txt");
+        std::fs::write(&file, b"hi").unwrap();
+
+        let registry = WorkspaceRegistry::default();
+        registry.grant_picked(&file, false).expect("grant picked");
+
+        assert!(ensure_authorized(&registry, &file).is_ok());
+        let error = ensure_writable(&registry, &file).unwrap_err();
+        assert!(
+            error.contains("outside the authorized workspace"),
+            "got: {error}"
+        );
+    }
+
+    /// The dialog grant is the only way past the workspace root, and it covers
+    /// the chosen file — not the directory that happens to contain it.
+    #[test]
+    fn pick_reaches_outside_the_workspace_but_not_its_directory() {
+        let outside = tempfile::tempdir().unwrap();
+        let file = outside.path().join("notes.txt");
+        std::fs::write(&file, b"hi").unwrap();
+
+        let registry = WorkspaceRegistry::default();
+        let error = ensure_authorized(&registry, &file).unwrap_err();
+        assert!(
+            error.contains("outside the authorized workspace"),
+            "got: {error}"
+        );
+
+        registry.grant_picked(&file, false).expect("grant picked");
+
+        assert!(ensure_authorized(&registry, &file).is_ok());
+        assert!(ensure_authorized(&registry, outside.path()).is_err());
+    }
+
+    /// `starts_with` compares whole components, so `secret.txt` must not also
+    /// admit `secret.txt2`.
+    #[test]
+    fn grant_does_not_leak_to_a_similarly_named_sibling() {
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("secret.txt");
+        let sibling = outside.path().join("secret.txt2");
+        std::fs::write(&target, b"a").unwrap();
+        std::fs::write(&sibling, b"b").unwrap();
+
+        let registry = WorkspaceRegistry::default();
+        registry.grant_picked(&target, false).expect("grant picked");
+
+        assert!(ensure_authorized(&registry, &target).is_ok());
+        assert!(ensure_authorized(&registry, &sibling).is_err());
+    }
+
+    /// A grant made inside one workspace must not survive into another check
+    /// against a path that was never picked.
+    #[test]
+    fn grants_are_scoped_to_the_paths_they_name() {
+        let (_root, registry, env) = workspace_with_secret();
+        let other = env.parent().expect("secret has a parent").join(".env.local");
+        std::fs::write(&other, b"OTHER=1").unwrap();
+
+        registry.grant_picked(&env, false).expect("grant picked");
+
+        assert!(ensure_authorized(&registry, &env).is_ok());
+        // `.env.local` is still a secret basename and was never picked.
+        assert!(ensure_authorized(&registry, &other).is_err());
     }
 }

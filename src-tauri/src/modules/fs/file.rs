@@ -7,7 +7,8 @@ use tauri::Emitter;
 use tempfile::NamedTempFile;
 
 use crate::modules::workspace::{
-    ensure_authorized, ensure_authorized_path, resolve_path, WorkspaceEnv, WorkspaceRegistry,
+    ensure_authorized, ensure_authorized_path, ensure_writable_path, resolve_path, WorkspaceEnv,
+    WorkspaceRegistry,
 };
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
@@ -64,7 +65,7 @@ pub async fn fs_read_file(
     registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<ReadResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
-    let target = ensure_authorized_path(&registry, &resolve_path(&path, &workspace))?;
+    let target = ensure_writable_path(&registry, &resolve_path(&path, &workspace))?;
     read_file_sync(&target, force.unwrap_or(false))
 }
 

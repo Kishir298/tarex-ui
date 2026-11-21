@@ -49,6 +49,9 @@ grep-regex = "0.1"
 grep-searcher = "0.1"
 grep-matcher = "0.1"
 globset = "0.4"
+# Already in the graph via grep-regex; declared directly so the native
+# sensitive-path rules can share the renderer's pattern set.
+regex = "1"
 nucleo-matcher = "0.3"
 shared_child = "1"
 tauri-plugin-log = "2"

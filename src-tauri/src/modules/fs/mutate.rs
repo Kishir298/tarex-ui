@@ -1,5 +1,5 @@
 use crate::modules::workspace::{
-    ensure_authorized, resolve_path, WorkspaceEnv, WorkspaceRegistry,
+    ensure_authorized, ensure_writable, resolve_path, WorkspaceEnv, WorkspaceRegistry,
 };
 use serde::Serialize;
 use std::io;
@@ -227,7 +227,7 @@ pub fn fs_create_file(
     registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
-    ensure_authorized(&registry, &resolve_path(&path, &workspace))?;
+    ensure_writable(&registry, &resolve_path(&path, &workspace))?;
     fs_create_file_impl(path, &workspace)
 }
 
@@ -252,7 +252,7 @@ pub fn fs_create_dir(
     registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
-    ensure_authorized(&registry, &resolve_path(&path, &workspace))?;
+    ensure_writable(&registry, &resolve_path(&path, &workspace))?;
     fs_create_dir_impl(path, &workspace)
 }
 
@@ -276,8 +276,8 @@ pub fn fs_rename(
     registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
-    ensure_authorized(&registry, &resolve_path(&from, &workspace))?;
-    ensure_authorized(&registry, &resolve_path(&to, &workspace))?;
+    ensure_writable(&registry, &resolve_path(&from, &workspace))?;
+    ensure_writable(&registry, &resolve_path(&to, &workspace))?;
     fs_rename_impl(from, to, &workspace)
 }
 
@@ -380,7 +380,7 @@ pub fn fs_delete(
     registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
-    ensure_authorized(&registry, &resolve_path(&path, &workspace))?;
+    ensure_writable(&registry, &resolve_path(&path, &workspace))?;
     fs_delete_impl(path, &workspace)
 }
 
@@ -460,7 +460,7 @@ pub async fn fs_save_copy(
         return Err("Destination must be an absolute path".into());
     }
     ensure_authorized(&registry, &source)?;
-    ensure_authorized(&registry, &destination)?;
+    ensure_writable(&registry, &destination)?;
     tauri::async_runtime::spawn_blocking(move || {
         let parent = destination.parent().ok_or("Missing destination directory")?;
         let temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
@@ -484,7 +484,7 @@ pub fn fs_copy(
     let workspace = WorkspaceEnv::from_option(workspace);
     // Sources are external OS paths by design (drag-drop import); only the
     // destination must sit inside the workspace.
-    ensure_authorized(&registry, &resolve_path(&dest_dir, &workspace))?;
+    ensure_writable(&registry, &resolve_path(&dest_dir, &workspace))?;
     fs_copy_impl(sources, dest_dir, &workspace)
 }
 

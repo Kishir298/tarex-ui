@@ -119,7 +119,7 @@ pub async fn lsp_spawn(
     if exited {
         state.take(id);
     }
-    log::info!("lsp spawned id={id} {spawn_log}");
+    log::debug!("lsp spawned id={id} {spawn_log}");
     Ok(id)
 }
 

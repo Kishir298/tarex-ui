@@ -166,6 +166,38 @@ fn updater_supported() -> bool {
     !cfg!(target_os = "linux") || std::env::var_os("APPIMAGE").is_some()
 }
 
+/// Logs stay local: the app's own log directory always, stdout only for debug
+/// builds where the developer asked for it. Nothing is ever sent anywhere.
+/// `TAREX_LOG=debug` opts a user into the verbose detail (process paths,
+/// command lines) that is otherwise kept out of the default `info` stream.
+fn log_level() -> tauri_plugin_log::log::LevelFilter {
+    level_from(std::env::var("TAREX_LOG").ok().as_deref())
+}
+
+fn level_from(value: Option<&str>) -> tauri_plugin_log::log::LevelFilter {
+    match value {
+        Some("debug") => tauri_plugin_log::log::LevelFilter::Debug,
+        Some("trace") => tauri_plugin_log::log::LevelFilter::Trace,
+        _ => tauri_plugin_log::log::LevelFilter::Info,
+    }
+}
+
+fn log_targets() -> Vec<tauri_plugin_log::Target> {
+    target_kinds_for(cfg!(debug_assertions))
+        .into_iter()
+        .map(tauri_plugin_log::Target::new)
+        .collect()
+}
+
+fn target_kinds_for(stdout: bool) -> Vec<tauri_plugin_log::TargetKind> {
+    let log_dir = tauri_plugin_log::TargetKind::LogDir { file_name: None };
+    if stdout {
+        vec![tauri_plugin_log::TargetKind::Stdout, log_dir]
+    } else {
+        vec![log_dir]
+    }
+}
+
 #[cfg(test)]
 mod updater_config_tests {
     #[test]
@@ -230,7 +262,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_log::Builder::new()
-                .level(tauri_plugin_log::log::LevelFilter::Info)
+                .level(log_level())
+                .targets(log_targets())
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
@@ -525,5 +558,67 @@ mod launch_target_tests {
     fn settings_float_only_outside_macos() {
         assert!(!settings_always_on_top(true));
         assert!(settings_always_on_top(false));
+    }
+}
+
+#[cfg(test)]
+mod log_config_tests {
+    use super::*;
+
+    #[test]
+    fn default_log_level_is_info_and_only_an_exact_opt_in_lowers_it() {
+        assert!(matches!(
+            level_from(None),
+            tauri_plugin_log::log::LevelFilter::Info
+        ));
+        assert!(matches!(
+            level_from(Some("")),
+            tauri_plugin_log::log::LevelFilter::Info
+        ));
+        assert!(matches!(
+            level_from(Some("info")),
+            tauri_plugin_log::log::LevelFilter::Info
+        ));
+        assert!(matches!(
+            level_from(Some("DEBUG")),
+            tauri_plugin_log::log::LevelFilter::Info
+        ));
+        assert!(matches!(
+            level_from(Some("verbose")),
+            tauri_plugin_log::log::LevelFilter::Info
+        ));
+    }
+
+    #[test]
+    fn verbose_detail_needs_an_explicit_request() {
+        assert!(matches!(
+            level_from(Some("debug")),
+            tauri_plugin_log::log::LevelFilter::Debug
+        ));
+        assert!(matches!(
+            level_from(Some("trace")),
+            tauri_plugin_log::log::LevelFilter::Trace
+        ));
+    }
+
+    #[test]
+    fn release_builds_write_only_to_the_local_log_directory() {
+        let release = target_kinds_for(false);
+        assert_eq!(release.len(), 1);
+        assert!(matches!(
+            release[0],
+            tauri_plugin_log::TargetKind::LogDir { .. }
+        ));
+    }
+
+    #[test]
+    fn debug_builds_also_mirror_to_stdout() {
+        let debug = target_kinds_for(true);
+        assert_eq!(debug.len(), 2);
+        assert!(matches!(debug[0], tauri_plugin_log::TargetKind::Stdout));
+        assert!(matches!(
+            debug[1],
+            tauri_plugin_log::TargetKind::LogDir { .. }
+        ));
     }
 }

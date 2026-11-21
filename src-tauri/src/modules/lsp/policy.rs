@@ -249,7 +249,7 @@ pub async fn authorize(
         args: args.to_vec(),
     });
     save(app, &list)?;
-    log::info!("lsp: allowed custom server {rendered}");
+    log::debug!("lsp: allowed custom server {rendered}");
     Ok(())
 }
 

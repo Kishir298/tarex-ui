@@ -1,4 +1,4 @@
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import { resolveDisplayName, resolveLanguage } from "./languageResolver";
@@ -54,9 +54,14 @@ describe("resolveDisplayName", () => {
       doc: "{#if ready}<button on:click={run}>{label}</button>{/if}",
       extensions: [result.ext],
     });
-    const tree = syntaxTree(state).toString();
-    expect(tree).toContain("IfBlock");
-    expect(tree).toContain("DirectiveOn");
+    // syntaxTree() only returns what has been parsed so far, so on a fresh
+    // EditorState it can hand back a partial tree and miss the Svelte nodes
+    // under load. Force the parse to the end of the document instead.
+    const tree = ensureSyntaxTree(state, state.doc.length, 5000);
+    if (!tree) throw new Error("Svelte parse did not complete");
+    const parsed = tree.toString();
+    expect(parsed).toContain("IfBlock");
+    expect(parsed).toContain("DirectiveOn");
   });
 
   // The prefix fallback must not let extension languages capture lookalike

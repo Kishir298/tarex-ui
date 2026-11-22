@@ -9,10 +9,14 @@ Tarex runs shells, reads and writes files, and sends data to AI providers. The s
 The main trust boundaries are:
 
 1. **IPC boundary** - commands registered in `src-tauri/src/lib.rs`, gated by `src-tauri/capabilities/default.json`.
-2. **File-system boundary** - AI tools go through `src/modules/ai/lib/security.ts`; PTY spawn goes through the workspace authorization registry.
+2. **File-system boundary** - every renderer-supplied path is authorized in Rust (`ensure_authorized_path` / `ensure_writable_path` in `src-tauri/src/modules/workspace.rs`), not only by the frontend deny-list in `src/modules/ai/lib/security.ts`. PTY spawn goes through the workspace authorization registry.
 3. **Network boundary** - AI HTTP proxy in `src-tauri/src/modules/net.rs` with SSRF and DNS-rebinding defenses.
 4. **Secret-storage boundary** - keys live in the OS keychain, never on disk or in `localStorage`.
 5. **Terminal escape-sequence boundary** - OSC sequences are parsed and acted on, but never blindly trusted to mutate state.
+
+The frontend checks are a usability layer. The Rust checks are the ones that
+hold when the renderer is hostile, so a new command must not rely on the
+TypeScript side alone.
 
 ## Secret-path deny-list
 
@@ -28,6 +32,15 @@ The comparison surface normalizes paths: backslashes to forward slashes, strips 
 
 `checkReadableCanonical` and `checkWritableCanonical` also canonicalize the path and re-check the resolved form so a symlink at an innocent path pointing into `~/.ssh` is caught.
 
+The same rules are re-applied natively by `ensure_writable` in
+`src-tauri/src/modules/workspace.rs`: renderer-supplied paths are canonicalized,
+checked against the sensitive-path list, and required to resolve inside an
+authorized root. File open/save no longer accept a path from the renderer at
+all — `dialog_open_files` / `dialog_save_as` run the native picker in Rust
+(`src-tauri/src/modules/dialog.rs`), and `open_path` refuses executable
+payloads (`.app`, `.appex`, extensionless binaries, and known executable
+extensions) before handing anything to the OS opener.
+
 ## Workspace authorization registry
 
 `WorkspaceRegistry` (`src-tauri/src/modules/workspace.rs:20`) tracks directories that PTY spawn, git commands, and AI tools are allowed to operate in.
@@ -38,6 +51,33 @@ The comparison surface normalizes paths: backslashes to forward slashes, strips 
 - The registry is bootstrapped with the launch directory and the user's home directory (`workspace.rs:135`).
 
 This is the allow side of the file-system boundary. Any new feature that spawns a shell or mutates files outside the current workspace must interact with this registry.
+
+The registry also owns an **asset grant hook**. When the frontend registers a
+granted asset path, Rust replays it as a `Fn(&Path)` callback so every
+`asset:` load passes through the same authorization instead of trusting the
+asset-protocol scope. `tauri.conf.json` therefore scopes `assetProtocol` to
+`$RESOURCE/**` rather than `**`.
+
+## Renderer capability surface
+
+`src-tauri/capabilities/default.json` is deliberately narrow. Notable entries:
+
+- **No `opener:allow-open-path`.** Local paths cannot be opened from the
+  renderer. `opener:default` remains, which allows opening `http:`, `https:`,
+  `mailto:` and `tel:` URLs in the system browser and revealing a path in the
+  file manager.
+- **LSP spawns** go through `src-tauri/src/modules/lsp/policy.rs`: a preset
+  allowlist of known servers with bounded argument templates. A custom server
+  requires a native confirmation, and the answer is stored in a file the
+  renderer cannot write.
+- **AI plan mode** is enforced at the native boundary by
+  `src-tauri/src/modules/ai_session.rs`. Writes under plan mode require a
+  session token minted by `ai_session_create`; user and editor writes do not.
+- **Secrets** are allowlisted by service and account in
+  `src-tauri/src/modules/secrets.rs`.
+- **Legacy import** strips command-bearing settings into a Rust-owned
+  quarantine file (`src-tauri/src/modules/shared_storage.rs`) that is applied
+  or discarded through an explicit review prompt, never silently.
 
 ## AI tool approval flow
 
@@ -58,7 +98,12 @@ Auto-send after approval uses `lastAssistantMessageIsCompleteWithApprovalRespons
 3. Block cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`, AWS IPv6 metadata, etc.).
 4. Pin reqwest to the resolved IPs so a second DNS lookup cannot return a different address (DNS rebinding).
 
-Local LLM endpoints are explicitly allowed because the user opted in by pointing Tarex at them, but they are still classified and logged.
+Local LLM endpoints are reachable only when the caller passes
+`allow_private_network` (`ai_http_request` / `ai_http_stream`), which the
+frontend sets for the agent's local proxy. Cloud metadata hosts and
+link-local addresses stay blocked regardless of that flag, and every
+redirect hop is re-validated against the same scheme, userinfo and
+metadata rules as the original URL.
 
 ## Secret storage
 
@@ -83,10 +128,16 @@ The agent detector (`src-tauri/src/modules/pty/agent_detect.rs`) is armed by `OS
 ## Invariants
 
 - The deny-list in `security.ts` applies on both read and write. Never bypass it.
+- Every path that arrives from the renderer must pass `ensure_authorized_path`
+  (reads) or `ensure_writable_path` (writes) in Rust before it is used.
 - New file-system-touching commands must respect the workspace authorization registry.
 - New network-facing commands must go through the `net.rs` proxy or reimplement the same classification and DNS pinning.
 - New plugin APIs must be added to `src-tauri/capabilities/default.json`.
+- Never re-add `opener:allow-open-path`, a `**` asset scope, or a `https:`
+  entry in `connect-src`.
 - Keys, tokens, and credentials stay in the keychain / Linux secrets file.
+- Anything that spawns a process from a renderer-supplied value goes through
+  an allowlist or a native confirmation, not a frontend check alone.
 
 ## See also
 

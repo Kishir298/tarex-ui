@@ -54,6 +54,17 @@ Last updated: 2026-11-19
   (`C,V,Z,A,D,E,F,K,L,N,P,R,U,W,Y`) with deferral-matrix tests.
 - `07561e8` — repository metadata URLs repointed to `Kishir298/tarex-ui`
   (updater endpoint included; asserted by `updater_config_tests`).
+- `9247bde..HEAD` — `tarex-ui/security-remediation-2026-11`, 23 commits:
+  CI repair (`b1de0ba`, `0a63ee1`), renderer path authorization and native
+  file dialogs (`918d566`, `2318538`, `dbeb350`), native-boundary guards for
+  secrets/LSP/AI plan mode (`0fd3080`, `cfd80a7`, `e6c7901`), SSRF hardening
+  (`6bdb2ee`), renderer capability tightening (`cae0ae7`), Tarex-owned updater
+  keypair (`7fecf38`), workflow hardening and `cargo fmt` (`0024562`,
+  `a12f035`), legacy-import quarantine (`c5f1ba6`), logging scope (`ccce391`),
+  and documentation (`9247bde`, `c1f76cc`, `678cacd`, `8731d29`, plus the
+  README and audit-doc updates on this branch). A future upstream merge must
+  not clobber any of these — see `TAREX_SECURITY_AUDIT.md` for what each one
+  protects.
 
 ## Audit findings
 

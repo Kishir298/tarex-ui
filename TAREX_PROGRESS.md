@@ -1,6 +1,6 @@
 # Tarex UI — Progress
 
-Last updated: 2026-11-19
+Last updated: 2026-11-21
 
 ## Phase 0 — Baseline and documentation
 
@@ -67,31 +67,43 @@ Baseline results (2026-11-19, after repository recovery and WASM rebuild):
 
 ## Phase 4 — Security
 
-Findings are documented in `TAREX_SECURITY_AUDIT.md`. Full remediation is
-deferred by decision; no security gates were weakened in this work.
+Findings are documented in `TAREX_SECURITY_AUDIT.md`. All 13 are remediated
+on `tarex-ui/security-remediation-2026-11`; residual risks are listed there.
 
-- [ ] Path guard for all fs commands
-- [ ] Remove home auto-authorization
-- [ ] Native picker authorization
-- [ ] LSP allowlist
-- [ ] Secret service/account allowlist
-- [ ] `fs_save_copy` restriction
-- [ ] SSRF hardening
-- [ ] Opener/asset/CSP tightening
-- [ ] Native plan-mode enforcement
-- [ ] Tests
+- [x] Path guard for all fs commands (`918d566`, `2318538`)
+- [x] Remove home auto-authorization (bootstrap grants launch dir only)
+- [x] Native picker authorization (`2318538`, `dbeb350`)
+- [x] LSP allowlist (`cfd80a7`)
+- [x] Secret service/account allowlist (`0fd3080`)
+- [x] `fs_save_copy` restriction (source guarded, destination dialog-granted)
+- [x] SSRF hardening (`6bdb2ee`)
+- [x] Opener/asset/CSP tightening (`cae0ae7`)
+- [x] Native plan-mode enforcement (`e6c7901`)
+- [x] Legacy import command quarantine + review UI (`c5f1ba6`)
+- [x] Local-only logging, verbose detail opt-in (`ccce391`)
+- [x] Tests — see the Verification table in `TAREX_SECURITY_AUDIT.md`
 
 ## Phase 5 — Release and CI
 
-- [~] Tarex updater endpoint — repointed to
+- [x] Tarex updater endpoint — repointed to
       `https://github.com/Kishir298/tarex-ui/releases/latest/download/latest.json`
-      and asserted by `updater_config_tests`; the fresh signing keypair still
-      has to be created and stored as the `TAURI_SIGNING_PRIVATE_KEY`
-      repository secret before releases can publish
-- [x] Release scripts/tests (`scripts/release.check.mjs`)
-- [ ] Remove dead workflows
-- [ ] Cross-platform CI
-- [ ] Release dry run
+      and asserted by `updater_config_tests`
+- [x] Fresh Tarex-owned updater signing keypair (`7fecf38`) — pubkey replaced
+      in `tauri.conf.json`; `TAURI_SIGNING_PRIVATE_KEY` and
+      `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` are repository secrets; both
+      `release.yml` bindings read the secret. Signature round-trip verified
+      locally against the committed pubkey.
+- [x] Release scripts/tests (`scripts/release.check.mjs`, 3/3)
+- [x] Remove dead workflows — only `ci.yml` and `release.yml` remain, both
+      necessary
+- [x] Cross-platform CI — `ci.yml` runs frontend, rustfmt, `cargo check` +
+      clippy + nextest on Linux, `cargo check` + nextest on Windows and
+      macOS, plus terminal tests on Windows and macOS
+- [x] Release trigger — `release.yml` is `workflow_dispatch` only (`a12f035`)
+- [x] CI hardening — top-level `permissions: contents: read`, `timeout-minutes`
+      on every job, `cargo fmt --all --check` gate (`a12f035`)
+- [x] Repo-wide `cargo fmt` as a mechanical commit (`0024562`)
+- [ ] Release dry run — pending the pushed branch
 
 ## Phase 6 — VPN
 
@@ -100,40 +112,31 @@ deferred by decision; no security gates were weakened in this work.
 
 ## Phase 7 — Final verification and delivery
 
-- [x] Full checks (2026-11-19, macOS): `pnpm check-types` pass;
-      `pnpm lint` exit 0 (88 pre-existing warnings, 1 info, zero added);
-      `pnpm test` 1370/1370 (one pre-existing flaky Svelte test, see known
-      issues); `cargo test --locked` 403 pass / 0 fail / 1 ignored;
-      `cargo clippy --all-targets -- -D warnings` pass;
-      `cargo fmt --check` fails only on pre-existing hunks; `pnpm build`
-      pass; `node --test scripts/release.check.mjs` 3/3 pass;
-      `pnpm tauri build --debug --bundles app` produced
-      `src-tauri/target/debug/bundle/macos/Tarex UI.app`
+- [x] Full checks (2026-11-21, macOS): `pnpm check-types` pass; `pnpm lint`
+      exit 0 (88 pre-existing warnings, 1 info, zero added); `pnpm test`
+      1392/1392 (194 files); `cargo test --locked` 468 pass / 0 fail /
+      1 ignored; `cargo clippy --all-targets --locked -- -D warnings` pass;
+      `cargo fmt --all --check` pass; `pnpm build` pass;
+      `node --test scripts/release.check.mjs` 3/3
+- [ ] Cross-platform CI verification on the pushed branch
 - [ ] Smoke tests
-- [x] `requirements.txt` / `.gitignore` review — no new packages were
-      installed (pnpm only, so no `requirements.txt` is needed); `.gitignore`
-      now also covers `.env*`, `secrets.json`, `credentials.json`,
-      `*.pem`/`*.key`/`*.p12`/`*.pfx`, and `.npmrc`
+- [x] `.gitignore` review — covers `.env*`, `secrets.json`,
+      `credentials.json`, `*.pem`/`*.key`/`*.p12`/`*.pfx`, `.npmrc`
 - [x] Staged commits (one logical topic per commit)
-- [x] Push branch and fast-forward `main` (branch `tarex-ui/restructure-2026-11` pushed; `main` fast-forwarded to `be71ee0` and pushed)
+- [ ] Push branch `tarex-ui/security-remediation-2026-11`
 - [ ] Open PR (only if requested)
 
 ## Known issues / follow-ups
 
-- `cargo fmt --check` fails with ~105 pre-existing hunks in upstream-style
-  files; no CI workflow enforces rustfmt. Decide whether to run a repo-wide
-  `cargo fmt` as a dedicated mechanical commit.
+- `languageResolver.test.ts` ("loads Svelte files…") is flaky under parallel
+  vitest load; one failure was observed on 2026-11-21 and did not reproduce
+  in three consecutive full runs. Pre-existing; unrelated to this work.
 - Windows/Linux runtime verification requires CI or external machines; this
   session validated macOS only (Rust `cfg(windows)` paths compile but were
   not executed).
 - Efficiency Mode priority lowering is one-way on macOS without privileges;
   the Settings toggle surfaces OS refusals honestly.
-- Security remediation (Phase 4) remains open by decision; see
-  `TAREX_SECURITY_AUDIT.md`.
-- Releases cannot publish until the Tarex signing keypair exists as a
-  repository secret.
-- `src/modules/editor/lib/languageResolver.test.ts` ("loads Svelte files…")
-  is flaky under parallel vitest load (Svelte language mode not ready);
-  passes standalone. Pre-existing; unrelated to this work.
-- One transient WASM vitest setup flake was observed under heavy parallel
-  load and passes standalone; unrelated to these changes.
+- `frame-src` in the CSP still allows `http:`/`https:` for remote previews —
+  narrowing it needs a product decision on allowed origins.
+- Releases are manual (`workflow_dispatch`) until an automatic trigger is
+  wanted again.

@@ -5,6 +5,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Feature branches do not push to main, so this is the only way to get a
+  # cross-platform signal on a branch before opening a pull request.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

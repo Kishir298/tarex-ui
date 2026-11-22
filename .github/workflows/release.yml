@@ -2,6 +2,11 @@ name: Release Tarex UI
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and validate everything without publishing a release"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -121,7 +126,24 @@ jobs:
           merge-multiple: true
       - name: Assemble and validate signed update manifest
         run: node scripts/release.mjs manifest
-      - name: Create release from this push
+      - name: Verify assembled assets
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          for ext in dmg app.tar.gz AppImage deb rpm exe msi; do
+            compgen -G "*.$ext" >/dev/null
+          done
+          test -s latest.json
+          test -s SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: assembled-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Publish release
+        if: ${{ inputs.dry_run != true }}
         working-directory: release-assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,11 +153,6 @@ jobs:
           ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          for ext in dmg app.tar.gz AppImage deb rpm exe msi; do
-            compgen -G "*.$ext" >/dev/null
-          done
-          test -s latest.json
-          test -s SHA256SUMS
           tag="build-$BUILD-$ATTEMPT"
           notes="$(mktemp)"
           cat > "$notes" <<EOF

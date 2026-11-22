@@ -103,7 +103,11 @@ on `tarex-ui/security-remediation-2026-11`; residual risks are listed there.
 - [x] CI hardening — top-level `permissions: contents: read`, `timeout-minutes`
       on every job, `cargo fmt --all --check` gate (`a12f035`)
 - [x] Repo-wide `cargo fmt` as a mechanical commit (`0024562`)
-- [ ] Release dry run — pending the pushed branch
+- [x] Release dry run — `pnpm tauri build --debug --bundles app` produced
+      `src-tauri/target/debug/bundle/macos/Tarex UI.app` (80M) and the app
+      launched, opened a PTY, and quit cleanly. `release.yml` was
+      deliberately **not** dispatched: that would publish a release, which is
+      out of scope for this task.
 
 ## Phase 6 — VPN
 
@@ -112,18 +116,29 @@ on `tarex-ui/security-remediation-2026-11`; residual risks are listed there.
 
 ## Phase 7 — Final verification and delivery
 
-- [x] Full checks (2026-11-21, macOS): `pnpm check-types` pass; `pnpm lint`
+- [x] Full checks (2026-11-22, macOS): `pnpm check-types` pass; `pnpm lint`
       exit 0 (88 pre-existing warnings, 1 info, zero added); `pnpm test`
       1392/1392 (194 files); `cargo test --locked` 468 pass / 0 fail /
       1 ignored; `cargo clippy --all-targets --locked -- -D warnings` pass;
       `cargo fmt --all --check` pass; `pnpm build` pass;
       `node --test scripts/release.check.mjs` 3/3
-- [ ] Cross-platform CI verification on the pushed branch
-- [ ] Smoke tests
+- [x] Cross-platform CI verification on the pushed branch — run
+      [44992973687](https://github.com/Kishir298/tarex-ui/actions/runs/44992973687)
+      green on all 8 jobs: `cargo fmt`, `frontend`, `rust`, `coverage`,
+      `terminal-test` (Windows + macOS), `rust-test` (Windows + macOS).
+      nextest: Linux 477/477, macOS 468/468, Windows 452/452 (0 skipped).
+      Two Windows-only PTY test defects were exposed and fixed
+      (`94ff8e4`); `--no-fail-fast` was added so one failure cannot hide
+      the rest (`62957e3`).
+- [x] Smoke tests — built `Tarex UI.app` launched from the CLI: process
+      stayed healthy, opened a PTY (`pty opened id=1`), logged no panics,
+      and exited cleanly on SIGTERM. The single `ERROR` line is the updater
+      probing `…/releases/latest/download/latest.json`, which returns 404
+      until the first release is published — expected.
 - [x] `.gitignore` review — covers `.env*`, `secrets.json`,
       `credentials.json`, `*.pem`/`*.key`/`*.p12`/`*.pfx`, `.npmrc`
 - [x] Staged commits (one logical topic per commit)
-- [ ] Push branch `tarex-ui/security-remediation-2026-11`
+- [x] Push branch `tarex-ui/security-remediation-2026-11`
 - [ ] Open PR (only if requested)
 
 ## Known issues / follow-ups
@@ -131,9 +146,14 @@ on `tarex-ui/security-remediation-2026-11`; residual risks are listed there.
 - `languageResolver.test.ts` ("loads Svelte files…") is flaky under parallel
   vitest load; one failure was observed on 2026-11-21 and did not reproduce
   in three consecutive full runs. Pre-existing; unrelated to this work.
-- Windows/Linux runtime verification requires CI or external machines; this
-  session validated macOS only (Rust `cfg(windows)` paths compile but were
-  not executed).
+- Windows/Linux **unit and integration** verification now runs on CI
+      (Rust tests on Windows/macOS/Linux, terminal tests on Windows/macOS),
+      but no GUI smoke test has been run on Windows or Linux — only macOS
+      launched the built app in this session.
+- Until the first release is published, the updater logs
+      `update endpoint did not respond with a successful status code` on
+      every start, because `…/releases/latest/download/latest.json` is 404.
+      Expected; disappears once `release.yml` has produced a release.
 - Efficiency Mode priority lowering is one-way on macOS without privileges;
   the Settings toggle surfaces OS refusals honestly.
 - `frame-src` in the CSP still allows `http:`/`https:` for remote previews —

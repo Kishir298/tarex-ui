@@ -157,8 +157,25 @@ are historical. Current status is tracked by the CI runs on this branch._
 ## Verification
 
 Both source root causes (1 and 2) were reproduced against the exact log
-text above and fixed locally; `cargo check --all-targets --locked` passes on
-macOS after the fix. Linux/Windows compile proof requires CI on the pushed
-branch. Root cause 3 was remediated by generating a Tarex-owned updater
-keypair; the private key and its passphrase live only in `~/.tauri/` on the
-maintainer machine and as the two repository secrets, never in the tree.
+text above and fixed locally. Root cause 3 was remediated by generating a
+Tarex-owned updater keypair; the private key and its passphrase live only in
+`~/.tauri/` on the maintainer machine and as the two repository secrets,
+never in the tree.
+
+Cross-platform proof now exists: CI run
+[44992973687](https://github.com/Kishir298/tarex-ui/actions/runs/44992973687)
+on `tarex-ui/security-remediation-2026-11` completed green on all eight
+jobs — `cargo fmt`, `frontend`, `rust`, `coverage`, `terminal-test`
+(Windows + macOS) and `rust-test` (Windows + macOS). nextest reported
+Linux 477/477, macOS 468/468 and Windows 452/452 passing with zero
+skips, so the Windows compile fix (root cause 2) is proven end to end
+rather than only by `cargo check`.
+
+Windows had two test defects that were invisible while the crate could not
+compile there: `common_env_pins_effective_path_without_control` asserted the
+test process PATH, which cargo augments with build-script output directories
+on Windows, and `builds_wsl_zsh_launch_spec_with_user_zdotdir_probe`
+omitted the legacy `TERAX_USER_ZDOTDIR` compatibility alias that the product
+emits. Both were corrected in `94ff8e4`; nextest now runs with
+`--no-fail-fast` (`62957e3`) so a single failure can no longer abort the
+remaining tests and mask further Windows-only breakage.

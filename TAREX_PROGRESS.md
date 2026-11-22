@@ -70,6 +70,11 @@ Baseline results (2026-11-19, after repository recovery and WASM rebuild):
 Findings are documented in `TAREX_SECURITY_AUDIT.md`. All 13 are remediated
 on `tarex-ui/security-remediation-2026-11`; residual risks are listed there.
 
+> **Plan numbering:** the security plan was numbered P2.0–P2.20, but P2.3,
+> P2.13 and P2.20 were never defined for this branch (the sequence skips
+> them and ends at P2.19). They are numbering gaps, not unfinished work — do
+> not chase them.
+
 - [x] Path guard for all fs commands (`918d566`, `2318538`)
 - [x] Remove home auto-authorization (bootstrap grants launch dir only)
 - [x] Native picker authorization (`2318538`, `dbeb350`)

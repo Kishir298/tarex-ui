@@ -220,3 +220,61 @@ jobs:
           name: lcov-report
           path: src-tauri/lcov.info
           if-no-files-found: error
+
+  # Advisory: a GUI launch can fail for runner reasons (display server, GPU,
+  # webkit build) that are unrelated to the code, so this job never blocks
+  # the branch. It still proves the debug bundle builds and that the app
+  # reaches a running state on Windows and Linux, which the test jobs alone
+  # cannot show.
+  smoke:
+    name: smoke (${{ matrix.os }})
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            xvfb
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: smoke-${{ matrix.os }}
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build debug bundle (no installer)
+        run: pnpm tauri build --debug --no-bundle
+
+      - name: Launch smoke test
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a node scripts/smoke-launch.mjs
+          else
+            node scripts/smoke-launch.mjs
+          fi

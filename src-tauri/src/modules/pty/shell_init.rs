@@ -963,6 +963,7 @@ mod windows {
                     "--exec".to_string(),
                     "env".to_string(),
                     "TAREX_USER_ZDOTDIR=/home/vinicios/.config/zsh".to_string(),
+                    "TERAX_USER_ZDOTDIR=/home/vinicios/.config/zsh".to_string(),
                     "ZDOTDIR=/home/vinicios/.cache/tarex/shell-integration/zsh".to_string(),
                     "/usr/bin/zsh".to_string(),
                     "-l".to_string(),
@@ -1182,11 +1183,15 @@ mod tests {
         if appimage_path {
             return;
         }
-        match std::env::var_os("PATH") {
-            Some(process) if !process.is_empty() => {
-                assert_eq!(command.get_env("PATH"), Some(process.as_os_str()));
-            }
-            _ => assert_eq!(command.get_env("PATH"), None),
+        // The shell is pinned to effective_path(), not to the PATH of the
+        // process that happens to be running the test: cargo prepends build
+        // script output directories to the test process PATH on Windows, and
+        // those must never leak into a shell the user opens.
+        let expected = crate::modules::windows_env::effective_path();
+        if expected.is_empty() {
+            assert_eq!(command.get_env("PATH"), None);
+        } else {
+            assert_eq!(command.get_env("PATH"), Some(expected.as_os_str()));
         }
     }
 }

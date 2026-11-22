@@ -135,6 +135,18 @@ pushed branch rather than this macOS session.
   which can already drive the PTY. The path registry, session tokens and
   plan-mode gate are defense in depth, not a boundary against a hostile
   renderer.
+- **`ai_http_request` / `ai_http_stream` accept a renderer-supplied
+  `allow_private_network` flag.** With it, loopback and RFC1918 targets are
+  reachable through the Rust HTTP client. Cloud-metadata hosts and
+  link-local addresses stay blocked regardless, DNS-rebinding pinning still
+  applies, and every redirect hop is re-validated. The flag exists so local
+  model endpoints work; a compromised webview gains nothing here that the
+  PTY does not already give it, so this is accepted rather than closed.
+- **`opener:default` lets the renderer open any `http:`, `https:`,
+  `mailto:` or `tel:` URL in the system browser** and reveal an arbitrary
+  path in the file manager. Opening local *paths* was removed from the
+  capability; only URL opening and reveal remain. Worst case is driving the
+  user's browser to a hostile page, not code execution.
 - **Shell tools are not gated by plan mode.** `bash_run` / `bash_background`
   can still write files while plan mode is on. Each shell command already
   requires `needsApproval: true`, so a user or an approving model must

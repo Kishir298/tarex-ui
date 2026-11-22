@@ -135,6 +135,12 @@ on `tarex-ui/security-remediation-2026-11`; residual risks are listed there.
       and exited cleanly on SIGTERM. The single `ERROR` line is the updater
       probing `…/releases/latest/download/latest.json`, which returns 404
       until the first release is published — expected.
+- [x] Dependency advisories cleared (`3b57d7f`) — `pnpm audit --prod`
+      reports no known vulnerabilities; CI's audit step stays advisory.
+- [x] Known flaky test fixed (`8731d29`) — the Svelte case in
+      `languageResolver.test.ts` read a partially parsed CodeMirror tree;
+      it now forces the parse with `ensureSyntaxTree`. Six consecutive full
+      `pnpm test` runs passed afterwards.
 - [x] `.gitignore` review — covers `.env*`, `secrets.json`,
       `credentials.json`, `*.pem`/`*.key`/`*.p12`/`*.pfx`, `.npmrc`
 - [x] Staged commits (one logical topic per commit)
@@ -143,9 +149,11 @@ on `tarex-ui/security-remediation-2026-11`; residual risks are listed there.
 
 ## Known issues / follow-ups
 
-- `languageResolver.test.ts` ("loads Svelte files…") is flaky under parallel
-  vitest load; one failure was observed on 2026-11-21 and did not reproduce
-  in three consecutive full runs. Pre-existing; unrelated to this work.
+- `pnpm audit --prod` is clean as of `3b57d7f` (zod bumped to 4.6.7 for
+  GHSA-mrhx-c7xc-m3w5; `@ai-sdk/provider-utils` pinned to ^4.0.36 for
+  GHSA-866g-f22w-33x8). The CI audit step is still advisory
+  (`continue-on-error: true`), so a future transitive advisory would not
+  fail the build.
 - Windows/Linux **unit and integration** verification now runs on CI
       (Rust tests on Windows/macOS/Linux, terminal tests on Windows/macOS),
       but no GUI smoke test has been run on Windows or Linux — only macOS

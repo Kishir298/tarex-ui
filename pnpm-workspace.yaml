@@ -7,3 +7,8 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: false
   msw: true
+
+# GHSA-866g-f22w-33x8: several @ai-sdk/* packages still resolve
+# provider-utils to a version below the patched 4.0.33.
+overrides:
+  "@ai-sdk/provider-utils": ^4.0.36

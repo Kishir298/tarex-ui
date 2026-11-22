@@ -22,7 +22,7 @@ deep charcoal, signal teal, and warm amber; the dashboard and terminal follow th
 ## Download
 
 Installers are published to [Releases](https://github.com/Kishir298/tarex-ui/releases)
-after successful pushes to `main`:
+by a manually dispatched release workflow (see [Releases](#releases)):
 
 | Platform | Downloads |
 | --- | --- |
@@ -166,20 +166,22 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 ```
 
-## Automatic Releases
+## Releases
 
-`.github/workflows/release.yml` runs on pushes to `main`, with an optional manual
-dispatch. It checks the frontend, builds all four platform targets in parallel,
+`.github/workflows/release.yml` runs only when dispatched manually
+(**Actions → Release Tarex UI → Run workflow**); it does not start on a push.
+It checks the frontend, builds all four platform targets in parallel,
 and publishes one release only after every build succeeds.
 
 No manual tag push is needed. The publishing job creates its own
-`build-<run-number>-<attempt>` release tag pointing to the triggering commit.
-It uses GitHub's automatic `GITHUB_TOKEN` and a dedicated `TAURI_SIGNING_PRIVATE_KEY`
+`build-<run-number>-<attempt>` release tag pointing to the commit the
+workflow was run against. It uses GitHub's automatic `GITHUB_TOKEN` and a dedicated `TAURI_SIGNING_PRIVATE_KEY`
 repository secret matching the public key in `src-tauri/tauri.conf.json`. Private
 signing keys stay outside the repository. CI stamps a newer patch version for each
 run, signs the final packages (after AppImage fixes), and validates all target
 entries before publishing `latest.json`. macOS and Windows OS-signing identities
-are not required for these updater signatures.
+are not required for these updater signatures. Until the first release is
+published, the in-app updater reports that its endpoint did not respond.
 
 ## Credits And License
 
